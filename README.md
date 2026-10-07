@@ -165,10 +165,10 @@ All three apps connect to the **same Postgres database** from a single `DATABASE
 
 Contributions are welcome! Please:
 
-1. Fork the repository and create your branch from `main`.
+1. Fork the repository and create your branch from `master`.
 2. Run `bun run typecheck` before submitting.
 3. Keep new database changes in the appropriate app's Prisma schema and run `bun run db:push`.
 
 ## License
 
-Tuno is open source. Add a `LICENSE` file (e.g. MIT) before publishing.
+Tuno is open source under the [MIT License](LICENSE).
