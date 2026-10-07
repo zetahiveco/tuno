@@ -278,9 +278,9 @@ function EventTypeRow({
         <button aria-label="Copy booking link" className="grid size-8 place-items-center rounded-md text-[#8c838f] transition hover:bg-[#f7f5f8] hover:text-[#3e3543]" onClick={() => void copyLink()} title="Copy booking link" type="button">
           {copied ? <FiCheck className="size-4 text-[#47755b]" /> : <FiCopy className="size-4" />}
         </button>
-        <a aria-label="Open booking page" className="grid size-8 place-items-center rounded-md text-[#8c838f] transition hover:bg-[#f7f5f8] hover:text-[#3e3543]" href={`/s/${eventType.slug}`} onClick={(event) => event.preventDefault()} rel="noreferrer" target="_blank" title="Open booking page">
+        <button aria-label="Open booking page" className="grid size-8 place-items-center rounded-md text-[#8c838f] transition hover:bg-[#f7f5f8] hover:text-[#3e3543]" onClick={() => { window.location.href = `/s/${eventType.slug}`; }} title="Open booking page" type="button">
           <FiExternalLink className="size-4" />
-        </a>
+        </button>
         <button aria-label="Edit event type" className="grid size-8 place-items-center rounded-md text-[#8c838f] transition hover:bg-[#f7f5f8] hover:text-[#3e3543]" onClick={onEdit} type="button">
           <FiEdit2 className="size-4" />
         </button>

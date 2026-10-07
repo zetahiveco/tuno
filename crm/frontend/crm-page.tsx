@@ -14,6 +14,7 @@ import {
 import {
   FiBriefcase,
   FiCheckCircle,
+  FiChevronDown,
   FiFileText,
   FiGrid,
   FiLayers,
@@ -34,6 +35,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -975,8 +983,8 @@ export function CrmTasksPage() {
     }
   }
 
-  async function toggle(task: CrmTask) {
-    const next = task.status === "DONE" ? "TODO" : "DONE";
+  async function updateStatus(task: CrmTask, next: TaskStatus) {
+    if (next === task.status) return;
     setTasks((current) => (current ?? []).map((entry) => (entry.id === task.id ? { ...entry, status: next } : entry)));
     try {
       await api(`/api/crm/tasks/${task.id}`, { body: JSON.stringify({ status: next }), method: "PATCH" });
@@ -1056,23 +1064,42 @@ export function CrmTasksPage() {
         {tasks?.map((task) => (
           <div className="flex items-center gap-3 rounded-lg border border-[#eeeaf1] bg-white px-4 py-3" key={task.id}>
             <button
-              aria-label="Toggle task status"
+              aria-label={task.status === "DONE" ? "Mark as to-do" : "Mark as done"}
               className={`grid size-5 shrink-0 place-items-center rounded-full border transition ${
                 task.status === "DONE" ? "border-[#4e8a68] bg-[#eaf6ef] text-[#4e8a68]" : "border-[#d8d2dd] hover:border-[#a49ba9]"
               }`}
-              onClick={() => void toggle(task)}
+              onClick={() => void updateStatus(task, task.status === "DONE" ? "TODO" : "DONE")}
               type="button"
             >
               {task.status === "DONE" ? "✓" : ""}
             </button>
             <div className="min-w-0 flex-1">
               <p className={`truncate text-xs font-medium ${task.status === "DONE" ? "text-[#a49ba9] line-through" : ""}`}>{task.title}</p>
-              <p className="mt-0.5 truncate text-[10px] text-[#968d9a]">
-                {TASK_STATUS_LABEL[task.status]}
-                {task.dueDate ? ` · Due ${formatDate(task.dueDate)}` : ""}
-                {task.accountId ? ` · Account: ${accounts.find((account) => account.id === task.accountId)?.name ?? "—"}` : ""}
-                {task.contactId ? ` · Contact: ${contacts.find((contact) => contact.id === task.contactId)?.name ?? "—"}` : ""}
-              </p>
+              <div className="mt-0.5 flex items-center gap-x-2 text-[10px] text-[#968d9a]">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      aria-label="Change task status"
+                      className="flex items-center gap-1 rounded text-[10px] text-[#968d9a] transition hover:text-[#3e3543] hover:underline"
+                      onClick={(event) => event.stopPropagation()}
+                      type="button"
+                    >
+                      {TASK_STATUS_LABEL[task.status]}
+                      <FiChevronDown className="size-3" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="min-w-[9rem]">
+                    <DropdownMenuRadioGroup onValueChange={(next) => void updateStatus(task, next as TaskStatus)} value={task.status}>
+                      {(Object.keys(TASK_STATUS_LABEL) as TaskStatus[]).map((entry) => (
+                        <DropdownMenuRadioItem className="text-xs" key={entry} value={entry}>{TASK_STATUS_LABEL[entry]}</DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                {task.dueDate ? <span>· Due {formatDate(task.dueDate)}</span> : null}
+                {task.accountId ? <span>· Account: {accounts.find((account) => account.id === task.accountId)?.name ?? "—"}</span> : null}
+                {task.contactId ? <span>· Contact: {contacts.find((contact) => contact.id === task.contactId)?.name ?? "—"}</span> : null}
+              </div>
             </div>
             <Button className="h-7 w-7 p-0 text-[#a49ba9] hover:bg-red-50 hover:text-red-700" onClick={() => void remove(task)} size="sm" variant="ghost"><FiTrash2 className="size-3.5" /></Button>
           </div>
@@ -1202,11 +1229,11 @@ export function CrmNotesPage() {
         </DialogContent>
       </Dialog>
       {error && <p className="mb-3 bg-red-50 px-3.5 py-2.5 text-xs text-red-700">{error}</p>}
-      <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {notes === null && <p className="text-xs text-[#928995]">Loading notes…</p>}
         {notes !== null && notes.length === 0 && <p className="text-xs text-[#928995]">No notes yet.</p>}
         {notes?.map((note) => (
-          <div className="group max-w-[720px] rounded-lg border border-[#eeeaf1] bg-white px-4 py-3" key={note.id}>
+          <div className="group rounded-lg border border-[#eeeaf1] bg-white px-4 py-3" key={note.id}>
             <p className="whitespace-pre-wrap text-xs leading-5">{note.body}</p>
             <div className="mt-2 flex items-center justify-between gap-2">
               <p className="text-[10px] text-[#a49ba9]">
@@ -1370,7 +1397,7 @@ export function CrmFieldsPage() {
           </form>
         </DialogContent>
       </Dialog>
-      <div className="max-w-[720px] space-y-2">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {fields === null && <p className="text-xs text-[#928995]">Loading fields…</p>}
         {fields !== null && fields.length === 0 && <p className="text-xs text-[#928995]">No custom fields yet.</p>}
         {fields?.map((field) => (

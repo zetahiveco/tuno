@@ -54,20 +54,20 @@ function AuthFrame({
           <div className="relative max-w-lg">
             <Badge className="mb-6 border-white/15 bg-white/[0.08] px-3 py-1.5 text-white hover:bg-white/[0.08]">
               <FiStar className="mr-1.5 size-3.5" />
-              Your work, in one place
+              Email · CRM · Forms · Docs
             </Badge>
             <h1 className="text-[clamp(2.7rem,5vw,4.45rem)] font-medium leading-[1.02] tracking-[-0.065em]">
-              A calmer way
+              Every tool your
               <br />
-              to get things
+              team runs on,
               <br />
-              <span className="text-[#c8a9dc]">moving.</span>
+              <span className="text-[#c8a9dc]">one workspace.</span>
             </h1>
             <p className="mt-6 max-w-sm text-[15px] leading-7 text-white/58">
-              One thoughtful workspace for the tools and small details that keep your day flowing.
+              Send email campaigns, manage contacts, book meetings, collect form responses, and publish content — without juggling separate apps.
             </p>
           </div>
-          <p className="relative text-xs text-white/55">Made for teams that like to keep it simple.</p>
+          <p className="relative text-xs text-white/55">8 apps. 1 login. Zero tab-switching.</p>
         </section>
         <section className="flex items-center justify-center px-6 py-12 sm:px-12 lg:px-14 xl:px-20">
           <div className="w-full max-w-[390px]">
