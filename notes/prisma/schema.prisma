@@ -1,0 +1,18 @@
+generator client {
+  provider   = "prisma-client"
+  output     = "../generated/client"
+  engineType = "client"
+  runtime    = "bun"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["notes"]
+}
+
+model NoteRecord {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  @@schema("notes")
+}

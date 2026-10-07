@@ -1,0 +1,75 @@
+generator client {
+  provider   = "prisma-client"
+  output     = "../generated/client"
+  engineType = "client"
+  runtime    = "bun"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["general"]
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+
+  @@schema("general")
+}
+
+model User {
+  id             String          @id @default(uuid())
+  email          String          @unique
+  passwordHash   String
+  role           Role            @default(MANAGER)
+  createdAt      DateTime        @default(now())
+  sessions       Session[]
+  invitations    Invitation[]    @relation("InvitedBy")
+  bootstrapState BootstrapState?
+
+  @@schema("general")
+}
+
+model Session {
+  tokenHash String   @id
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@schema("general")
+}
+
+model Setting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@schema("general")
+}
+
+model BootstrapState {
+  id     String @id
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@schema("general")
+}
+
+model Invitation {
+  id          String    @id @default(uuid())
+  email       String
+  tokenHash   String    @unique
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  invitedBy   User      @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([expiresAt])
+  @@schema("general")
+}
