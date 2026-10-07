@@ -153,12 +153,6 @@ export function defaultTemplateBlocks(): EmailBlock[] {
       ],
       children: [],
     },
-    {
-      type: "button",
-      props: { url: "https://example.com" },
-      content: [{ type: "text", text: "Open Tuno", styles: {} }],
-      children: [],
-    },
   ];
 }
 
@@ -384,18 +378,35 @@ export type RenderEmailOptions = {
   values: InterpolationValues;
   /** Rewrite links through the click tracker and add the open pixel. */
   tracking?: { clickUrlBase: string; openUrl: string };
+  /** Footer text (supports {{ variables }}). Falls back to a sensible default. */
+  footerText?: string;
+  /** Per-recipient unsubscribe link; renders an "Unsubscribe" footer link when set. */
+  unsubscribeUrl?: string;
 };
 
-export function renderEmailHtml({ blocks, values, tracking }: RenderEmailOptions): string {
+export const DEFAULT_FOOTER_TEXT = "You're receiving this email because you're part of this workspace's audience.";
+
+/** URL excluded from click-tracking so unsubscribe clicks go straight through. */
+function isExcludedFromTracking(url: string, options: RenderEmailOptions): boolean {
+  return Boolean(options.unsubscribeUrl) && url === options.unsubscribeUrl;
+}
+
+export function renderEmailHtml({ blocks, values, tracking, footerText, unsubscribeUrl }: RenderEmailOptions): string {
   let body = renderBlocksHtml(blocks, values);
 
   if (tracking) {
     body = body.replace(/href="(https?:\/\/[^"]+)"/g, (match, url: string) => {
+      if (isExcludedFromTracking(url, { blocks, values, tracking, footerText, unsubscribeUrl })) return match;
       if (url.startsWith(tracking.clickUrlBase)) return match;
       return `href="${tracking.clickUrlBase}?u=${encodeURIComponent(url)}"`;
     });
     body += `<img src="${tracking.openUrl}" width="1" height="1" alt="" style="display:none;" />`;
   }
+
+  const footer = escapeHtml(interpolate(footerText?.trim() ? footerText : DEFAULT_FOOTER_TEXT, values)).replaceAll("\n", "<br />");
+  const unsubscribeHtml = unsubscribeUrl
+    ? `<a href="${escapeHtml(unsubscribeUrl)}" style="color:#a49ba9;text-decoration:underline;">Unsubscribe</a>`
+    : "";
 
   return `<!doctype html>
 <html>
@@ -408,7 +419,7 @@ export function renderEmailHtml({ blocks, values, tracking }: RenderEmailOptions
             <tr><td>${body}</td></tr>
             <tr>
               <td style="padding-top:24px;border-top:1px solid #f0edf3;font-size:12px;color:#a49ba9;">
-                You're receiving this because you're on this workspace's audience. Sent with Tuno Mailer.
+                ${footer}${unsubscribeHtml ? `<br />${unsubscribeHtml}` : ""}
               </td>
             </tr>
           </table>

@@ -17,6 +17,7 @@ import {
 } from "react-icons/fi";
 import { api } from "@/lib/api-client";
 import { AppPageFrame } from "@/general/frontend/app-shell";
+import { useConfirm } from "@/components/confirm-alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -59,6 +60,7 @@ export function MailerCampaignsPage() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
   const [sendResult, setSendResult] = useState<string | null>(null);
+  const { confirm, element: confirmElement } = useConfirm();
 
   const loadCampaigns = useCallback(async () => {
     setError("");
@@ -80,7 +82,12 @@ export function MailerCampaignsPage() {
   }, [loadCampaigns]);
 
   async function sendCampaign(campaign: CampaignSummary) {
-    if (!window.confirm(`Send "${campaign.name}" to every subscribed contact? This cannot be undone.`)) return;
+    const confirmed = await confirm({
+      title: `Send "${campaign.name}"?`,
+      confirmLabel: "Send now",
+      description: "This sends the campaign to every subscribed contact. This cannot be undone.",
+    });
+    if (!confirmed) return;
     setSending(campaign.id);
     setSendResult(null);
     try {
@@ -97,7 +104,11 @@ export function MailerCampaignsPage() {
   }
 
   async function deleteCampaign(campaign: CampaignSummary) {
-    if (!window.confirm(`Delete "${campaign.name}" and its analytics?`)) return;
+    const confirmed = await confirm({
+      title: `Delete "${campaign.name}"?`,
+      description: "This permanently removes the campaign and its analytics. This action cannot be undone.",
+    });
+    if (!confirmed) return;
     try {
       await api(`/api/mailer/campaigns/${campaign.id}`, { method: "DELETE" });
       setCampaigns((current) => current.filter((entry) => entry.id !== campaign.id));
@@ -117,6 +128,7 @@ export function MailerCampaignsPage() {
       description="Compose, send, and measure your email sends."
       title="Campaigns"
     >
+      {confirmElement}
       <p className="mb-5 text-xs text-[#847b89]">
         {loading ? "Loading campaigns…" : `${campaigns.length} campaign${campaigns.length === 1 ? "" : "s"}`}
       </p>

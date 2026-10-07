@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConfirmAlertDialog } from "@/components/confirm-alert";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -391,22 +392,14 @@ export function SchedulerEventTypesPage() {
         />
       ) : null}
 
-      <Dialog onOpenChange={(open) => { if (!open) setDeleteTarget(null); }} open={Boolean(deleteTarget)}>
-        <DialogContent className="max-w-sm border-[#eeeaf1] bg-white">
-          <DialogHeader>
-            <DialogTitle className="text-base">Delete event type?</DialogTitle>
-            <DialogDescription className="text-xs">
-              This permanently removes “{deleteTarget?.title}” and all of its bookings.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button className="h-9 border-[#e9e6ed] bg-white text-xs text-[#5c5561] hover:bg-[#f7f5f8]" onClick={() => setDeleteTarget(null)} type="button" variant="outline">Cancel</Button>
-            <Button className="h-9 bg-[#b05f5f] px-4 text-xs hover:bg-[#9d4f4f]" disabled={deleting} onClick={() => void confirmDelete()} type="button">
-              {deleting ? <FiLoader className="size-3.5 animate-spin" /> : null} Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmAlertDialog
+        busy={deleting}
+        description={`This permanently removes “${deleteTarget?.title ?? ""}” and all of its bookings. This action cannot be undone.`}
+        onConfirm={() => void confirmDelete()}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        open={Boolean(deleteTarget)}
+        title="Delete event type?"
+      />
     </AppPageFrame>
   );
 }

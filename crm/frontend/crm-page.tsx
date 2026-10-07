@@ -1,15 +1,30 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  closestCorners,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
   FiBriefcase,
   FiCheckCircle,
   FiFileText,
+  FiGrid,
   FiLayers,
+  FiList,
   FiPlus,
   FiTrash2,
   FiUsers,
 } from "react-icons/fi";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/confirm-alert";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import {
   Dialog,
@@ -30,13 +45,13 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { AppPageFrame, AppShell, type AppNavPage } from "@/general/frontend/app-shell";
 import { api } from "@/lib/api-client";
+import { cn } from "cn";
 
 /* ---------------------------------- Types --------------------------------- */
 
-type LeadStatus = "NEW" | "CONTACTED" | "QUALIFIED" | "PROPOSAL" | "WON" | "LOST";
 type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
 type FieldType = "TEXT" | "NUMBER" | "DATE" | "SELECT" | "CHECKBOX";
-type FieldEntity = "LEAD" | "CONTACT" | "TASK";
+type FieldEntity = "ACCOUNT" | "CONTACT" | "TASK";
 
 type CustomField = {
   id: string;
@@ -46,15 +61,23 @@ type CustomField = {
   appliesTo: FieldEntity;
 };
 
-type Lead = {
+type PipelineStage = {
   id: string;
   name: string;
-  company: string;
+  color: string;
+  position: number;
+  accountCount: number;
+};
+
+type Account = {
+  id: string;
+  name: string;
   email: string;
   phone: string;
   source: string;
-  status: LeadStatus;
   value: number;
+  stageId: string;
+  stage: { id: string; name: string; color: string };
   customValues: Record<string, string>;
 };
 
@@ -63,9 +86,9 @@ type Contact = {
   name: string;
   email: string;
   phone: string;
-  company: string;
   role: string;
-  leadId: string | null;
+  accountId: string;
+  account: { id: string; name: string } | null;
   customValues: Record<string, string>;
 };
 
@@ -74,7 +97,7 @@ type CrmTask = {
   title: string;
   status: TaskStatus;
   dueDate: string | null;
-  leadId: string | null;
+  accountId: string | null;
   contactId: string | null;
   customValues: Record<string, string>;
 };
@@ -82,19 +105,10 @@ type CrmTask = {
 type CrmNote = {
   id: string;
   body: string;
-  leadId: string | null;
+  accountId: string | null;
   contactId: string | null;
   createdAt: string;
   updatedAt: string;
-};
-
-const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
-  NEW: "New",
-  CONTACTED: "Contacted",
-  QUALIFIED: "Qualified",
-  PROPOSAL: "Proposal",
-  WON: "Won",
-  LOST: "Lost",
 };
 
 const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
@@ -197,7 +211,7 @@ function renderCustomValue(field: CustomField, value: string | undefined): strin
 /* ---------------------------------- Layout --------------------------------- */
 
 const NAV: AppNavPage[] = [
-  { end: true, icon: FiBriefcase, label: "Leads", to: "/crm" },
+  { end: true, icon: FiBriefcase, label: "Accounts", to: "/crm" },
   { icon: FiUsers, label: "Contacts", to: "/crm/contacts" },
   { icon: FiCheckCircle, label: "Tasks", to: "/crm/tasks" },
   { icon: FiFileText, label: "Notes", to: "/crm/notes" },
@@ -208,9 +222,9 @@ export function CrmLayout() {
   return <AppShell accent="bg-[#eaf6ef] text-[#4e8a68]" appName="CRM" icon={FiBriefcase} pages={NAV} />;
 }
 
-/* ---------------------------------- Leads ---------------------------------- */
+/* ------------------------------ Shared fields hook -------------------------- */
 
-function useLeadFields() {
+function useCrmFields() {
   const [fields, setFields] = useState<CustomField[]>([]);
   useEffect(() => {
     api<{ fields: CustomField[] }>("/api/crm/fields")
@@ -218,31 +232,30 @@ function useLeadFields() {
       .catch(() => setFields([]));
   }, []);
   return {
-    leadFields: useMemo(() => fields.filter((field) => field.appliesTo === "LEAD"), [fields]),
+    accountFields: useMemo(() => fields.filter((field) => field.appliesTo === "ACCOUNT"), [fields]),
     contactFields: useMemo(() => fields.filter((field) => field.appliesTo === "CONTACT"), [fields]),
     taskFields: useMemo(() => fields.filter((field) => field.appliesTo === "TASK"), [fields]),
-    reload: useCallback(() => {
-      api<{ fields: CustomField[] }>("/api/crm/fields")
-        .then((result) => setFields(result.fields))
-        .catch(() => setFields([]));
-    }, []),
   };
 }
 
-function LeadDialog({
+/* --------------------------------- Accounts --------------------------------- */
+
+function AccountDialog({
   fieldList,
-  lead,
+  stages,
+  account,
   onOpenChange,
   onSaved,
   open,
 }: {
   fieldList: CustomField[];
-  lead: Lead | null;
+  stages: PipelineStage[];
+  account: Account | null;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
   open: boolean;
 }) {
-  const [form, setForm] = useState({ name: "", company: "", email: "", phone: "", source: "", status: "NEW" as LeadStatus, value: "0" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", source: "", stageId: "", value: "0" });
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -250,21 +263,20 @@ function LeadDialog({
   useEffect(() => {
     if (!open) return;
     setError("");
-    setValues(lead?.customValues ?? {});
+    setValues(account?.customValues ?? {});
     setForm({
-      name: lead?.name ?? "",
-      company: lead?.company ?? "",
-      email: lead?.email ?? "",
-      phone: lead?.phone ?? "",
-      source: lead?.source ?? "",
-      status: lead?.status ?? "NEW",
-      value: String(lead?.value ?? 0),
+      name: account?.name ?? "",
+      email: account?.email ?? "",
+      phone: account?.phone ?? "",
+      source: account?.source ?? "",
+      stageId: account?.stageId ?? stages[0]?.id ?? "",
+      value: String(account?.value ?? 0),
     });
-  }, [lead, open]);
+  }, [account, open, stages]);
 
   async function submit() {
     if (!form.name.trim()) {
-      setError("A lead name is required.");
+      setError("An account name is required.");
       return;
     }
     setSaving(true);
@@ -272,21 +284,20 @@ function LeadDialog({
     try {
       const body = {
         name: form.name,
-        company: form.company,
         email: form.email,
         phone: form.phone,
         source: form.source,
-        status: form.status,
+        stageId: form.stageId,
         value: Number(form.value) || 0,
       };
-      const result = lead
-        ? await api<{ lead: Lead }>(`/api/crm/leads/${lead.id}`, { body: JSON.stringify(body), method: "PATCH" })
-        : await api<{ lead: Lead }>("/api/crm/leads", { body: JSON.stringify(body), method: "POST" });
-      await saveCustomValues("LEAD", result.lead.id, values);
+      const result = account
+        ? await api<{ account: Account }>(`/api/crm/accounts/${account.id}`, { body: JSON.stringify(body), method: "PATCH" })
+        : await api<{ account: Account }>("/api/crm/accounts", { body: JSON.stringify(body), method: "POST" });
+      await saveCustomValues("ACCOUNT", result.account.id, values);
       onOpenChange(false);
       onSaved();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Could not save the lead.");
+      setError(saveError instanceof Error ? saveError.message : "Could not save the account.");
     } finally {
       setSaving(false);
     }
@@ -296,8 +307,8 @@ function LeadDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>{lead ? "Edit lead" : "New lead"}</DialogTitle>
-          <DialogDescription>Track a potential deal from first touch to close.</DialogDescription>
+          <DialogTitle>{account ? "Edit account" : "New account"}</DialogTitle>
+          <DialogDescription>A company you sell to, tracked through your pipeline stages.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
           <label className="space-y-2 text-xs font-medium">
@@ -306,28 +317,24 @@ function LeadDialog({
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="space-y-2 text-xs font-medium">
-              Company
-              <Input className="h-9 border-[#e9e6ed]" onChange={(event) => setForm({ ...form, company: event.target.value })} placeholder="Company name" value={form.company} />
-            </label>
-            <label className="space-y-2 text-xs font-medium">
               Source
               <Input className="h-9 border-[#e9e6ed]" onChange={(event) => setForm({ ...form, source: event.target.value })} placeholder="Referral" value={form.source} />
             </label>
             <label className="space-y-2 text-xs font-medium">
               Email
-              <Input className="h-9 border-[#e9e6ed]" onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="name@company.com" type="email" value={form.email} />
+              <Input className="h-9 border-[#e9e6ed]" onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="hello@company.com" type="email" value={form.email} />
             </label>
             <label className="space-y-2 text-xs font-medium">
               Phone
               <Input className="h-9 border-[#e9e6ed]" onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="+1 555 000 1234" value={form.phone} />
             </label>
             <label className="space-y-2 text-xs font-medium">
-              Status
-              <Select value={form.status} onValueChange={(status) => setForm({ ...form, status: status as LeadStatus })}>
-                <SelectTrigger className="h-9 w-full border-[#e9e6ed] text-xs font-normal"><SelectValue /></SelectTrigger>
+              Stage
+              <Select value={form.stageId} onValueChange={(stageId) => setForm({ ...form, stageId })}>
+                <SelectTrigger className="h-9 w-full border-[#e9e6ed] text-xs font-normal"><SelectValue placeholder="Pick a stage" /></SelectTrigger>
                 <SelectContent>
-                  {(Object.keys(LEAD_STATUS_LABEL) as LeadStatus[]).map((status) => (
-                    <SelectItem key={status} value={status}>{LEAD_STATUS_LABEL[status]}</SelectItem>
+                  {stages.map((stage) => (
+                    <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -343,7 +350,7 @@ function LeadDialog({
         <DialogFooter>
           <Button onClick={() => onOpenChange(false)} type="button" variant="outline">Cancel</Button>
           <Button className="bg-[#291b32] hover:bg-[#473252]" disabled={saving} onClick={() => void submit()} type="button">
-            {saving ? "Saving…" : "Save lead"}
+            {saving ? "Saving…" : "Save account"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -351,75 +358,378 @@ function LeadDialog({
   );
 }
 
-export function CrmLeadsPage() {
-  const { leadFields } = useLeadFields();
-  const [leads, setLeads] = useState<Lead[] | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<Lead | null>(null);
-  const [error, setError] = useState("");
+/* ------------------------------- Kanban board -------------------------------- */
 
-  const loadLeads = useCallback(() => {
-    api<{ leads: Lead[] }>("/api/crm/leads")
-      .then((result) => setLeads(result.leads))
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Could not load leads."));
+function AccountKanbanCard({ account, onEdit }: { account: Account; onEdit: (account: Account) => void }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: account.id });
+  const style = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 40 }
+    : undefined;
+  return (
+    <div
+      className={cn(
+        "touch-none rounded-md border border-[#eeeaf1] bg-white px-3 py-2.5 shadow-sm transition hover:border-[#ddd3e4]",
+        isDragging && "opacity-40",
+      )}
+      {...listeners}
+      {...attributes}
+      ref={setNodeRef}
+      style={style}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 text-xs font-medium">{account.name}</p>
+        <span
+          className="mt-1 size-2 shrink-0 rounded-full"
+          style={{ backgroundColor: account.stage.color }}
+          title={account.stage.name}
+        />
+      </div>
+      <div className="mt-1.5 flex items-center justify-between gap-2">
+        <p className="min-w-0 truncate text-[10px] text-[#968d9a]">
+          {account.value ? `$${account.value.toLocaleString()}` : "No value"}
+          {account.email ? ` · ${account.email}` : ""}
+        </p>
+        <Button
+          className="h-6 shrink-0 px-1.5 text-[10px] opacity-0 transition group-hover:opacity-100"
+          onClick={(event) => {
+            event.stopPropagation();
+            onEdit(account);
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+          size="sm"
+          variant="ghost"
+        >
+          Edit
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function StageColumn({
+  accounts,
+  canEdit,
+  onEditAccount,
+  onRemoveStage,
+  stage,
+}: {
+  accounts: Account[];
+  canEdit: boolean;
+  onEditAccount: (account: Account) => void;
+  onRemoveStage: (stage: PipelineStage) => void;
+  stage: PipelineStage;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: stage.id });
+  return (
+    <div
+      className={cn(
+        "flex max-h-full w-[280px] shrink-0 flex-col rounded-lg border border-[#eeeaf1] bg-[#f4f2f6]",
+        isOver && "border-[#b59ac7] bg-[#f3eef7]",
+      )}
+      ref={setNodeRef}
+    >
+      <div className="flex items-center justify-between gap-2 px-3 pb-1 pt-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: stage.color }} />
+          <span className="truncate text-[11px] font-semibold uppercase tracking-[0.1em] text-[#716b76]">{stage.name}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] text-[#a49ba9]">{accounts.length}</span>
+          {canEdit && (
+            <button
+              aria-label={`Delete stage ${stage.name}`}
+              className={cn(
+                "grid size-5 place-items-center rounded text-[#a49ba9] transition hover:bg-red-50 hover:text-[#b05f5f]",
+                accounts.length > 0 && "hidden",
+              )}
+              onClick={() => onRemoveStage(stage)}
+              type="button"
+            >
+              <FiTrash2 className="size-3" />
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="min-h-[80px] flex-1 space-y-2 overflow-y-auto px-2 pb-2 pt-1">
+        {accounts.map((account) => (
+          <AccountKanbanCard account={account} key={account.id} onEdit={onEditAccount} />
+        ))}
+        {accounts.length === 0 && <p className="px-1 py-2 text-[10px] text-[#cfc7d6]">Drop accounts here.</p>}
+      </div>
+    </div>
+  );
+}
+
+function AddStageCard({ onAdded }: { onAdded: () => void }) {
+  const [name, setName] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  async function submit() {
+    if (!name.trim() || adding) return;
+    setAdding(true);
+    try {
+      await api("/api/crm/stages", { body: JSON.stringify({ name }), method: "POST" });
+      setName("");
+      onAdded();
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  return (
+    <form
+      className="w-[240px] shrink-0 rounded-lg border border-dashed border-[#ddd3e4] p-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <Input
+        className="h-8 border-[#e9e6ed] bg-white text-xs"
+        onChange={(event) => setName(event.target.value)}
+        placeholder="New stage name…"
+        value={name}
+      />
+      <Button className="mt-2 h-7 w-full bg-white text-[11px] text-[#716b76] hover:bg-[#f7f5f8]" disabled={adding || !name.trim()} size="sm" type="submit" variant="outline">
+        <FiPlus className="size-3" /> Add stage
+      </Button>
+    </form>
+  );
+}
+
+function AccountsKanban({
+  accounts,
+  onEditAccount,
+  onMove,
+  onStagesChanged,
+  stages,
+}: {
+  accounts: Account[];
+  onEditAccount: (account: Account) => void;
+  onMove: (accountId: string, stageId: string) => void;
+  onStagesChanged: () => void;
+  stages: PipelineStage[];
+}) {
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const { confirm, element: confirmElement } = useConfirm();
+
+  const activeAccount = accounts.find((account) => account.id === activeId) ?? null;
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id));
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null);
+    const { active, over } = event;
+    if (!over) return;
+    const accountId = String(active.id);
+    const stageId = String(over.id);
+    const account = accounts.find((entry) => entry.id === accountId);
+    if (!account || account.stageId === stageId) return;
+    onMove(accountId, stageId);
+  }
+
+  return (
+    <DndContext
+      collisionDetection={closestCorners}
+      onDragEnd={handleDragEnd}
+      onDragStart={handleDragStart}
+      sensors={sensors}
+    >
+      {confirmElement}
+      <div className="flex items-start gap-4">
+        {stages.map((stage) => (
+          <StageColumn
+            accounts={accounts.filter((account) => account.stageId === stage.id)}
+            canEdit
+            key={stage.id}
+            onEditAccount={onEditAccount}
+            onRemoveStage={async (removed) => {
+              const confirmed = await confirm({
+                title: `Delete stage "${removed.name}"?`,
+                description: "Accounts in this stage will move to Unsorted. This action cannot be undone.",
+              });
+              if (!confirmed) return;
+              try {
+                await api(`/api/crm/stages/${removed.id}`, { method: "DELETE" });
+                onStagesChanged();
+              } catch {
+                onStagesChanged();
+              }
+            }}
+            stage={stage}
+          />
+        ))}
+        <AddStageCard onAdded={onStagesChanged} />
+      </div>
+      <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)" }}>
+        {activeAccount && (
+          <div className="w-[256px] rotate-2 rounded-md border border-[#ddd3e4] bg-white px-3 py-2.5 shadow-lg">
+            <p className="text-xs font-medium">{activeAccount.name}</p>
+            <p className="mt-0.5 text-[10px] text-[#968d9a]">
+              {activeAccount.value ? `$${activeAccount.value.toLocaleString()}` : "No value"}
+            </p>
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+/* --------------------------------- Accounts page ----------------------------- */
+
+export function CrmAccountsPage() {
+  const { accountFields } = useCrmFields();
+  const [accounts, setAccounts] = useState<Account[] | null>(null);
+  const [stages, setStages] = useState<PipelineStage[]>([]);
+  const [view, setView] = useState<"board" | "table">("board");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<Account | null>(null);
+  const [error, setError] = useState("");
+  const { confirm, element: confirmElement } = useConfirm();
+
+  const loadAccounts = useCallback(() => {
+    api<{ accounts: Account[] }>("/api/crm/accounts")
+      .then((result) => setAccounts(result.accounts))
+      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Could not load accounts."));
   }, []);
 
-  useEffect(() => { loadLeads(); }, [loadLeads]);
+  const loadStages = useCallback(() => {
+    api<{ stages: PipelineStage[] }>("/api/crm/stages")
+      .then((result) => setStages(result.stages))
+      .catch(() => setStages([]));
+  }, []);
 
-  async function remove(lead: Lead) {
+  useEffect(() => {
+    loadAccounts();
+    loadStages();
+  }, [loadAccounts, loadStages]);
+
+  async function moveAccount(accountId: string, stageId: string) {
+    const stage = stages.find((entry) => entry.id === stageId);
+    setAccounts((current) =>
+      (current ?? []).map((entry) =>
+        entry.id === accountId ? { ...entry, stageId, stage: { id: stageId, name: stage?.name ?? entry.stage.name, color: stage?.color ?? entry.stage.color } } : entry,
+      ),
+    );
     try {
-      await api(`/api/crm/leads/${lead.id}`, { method: "DELETE" });
-      setLeads((current) => (current ?? []).filter((entry) => entry.id !== lead.id));
+      await api(`/api/crm/accounts/${accountId}`, { body: JSON.stringify({ stageId }), method: "PATCH" });
+      loadStages();
+    } catch {
+      loadAccounts();
+    }
+  }
+
+  async function remove(account: Account) {
+    const confirmed = await confirm({
+      title: `Delete "${account.name}"?`,
+      description: "This permanently removes the account and its notes and tasks. This action cannot be undone.",
+    });
+    if (!confirmed) return;
+    try {
+      await api(`/api/crm/accounts/${account.id}`, { method: "DELETE" });
+      setAccounts((current) => (current ?? []).filter((entry) => entry.id !== account.id));
+      loadStages();
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Could not delete the lead.");
+      setError(deleteError instanceof Error ? deleteError.message : "Could not delete the account.");
     }
   }
 
   return (
     <AppPageFrame
       action={(
-        <Button className="bg-[#291b32] hover:bg-[#473252]" onClick={() => { setEditing(null); setDialogOpen(true); }}>
-          <FiPlus className="size-4" /> New lead
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex overflow-hidden rounded-md border border-[#eeeaf1] bg-white text-xs">
+            <button
+              className={cn("flex items-center gap-1.5 px-3 py-1.5 transition", view === "board" ? "bg-[#f3eef7] font-medium text-[#5c3f6e]" : "text-[#716b76] hover:bg-[#f7f5f8]")}
+              onClick={() => setView("board")}
+              type="button"
+            >
+              <FiGrid className="size-3.5" /> Board
+            </button>
+            <button
+              className={cn("flex items-center gap-1.5 px-3 py-1.5 transition", view === "table" ? "bg-[#f3eef7] font-medium text-[#5c3f6e]" : "text-[#716b76] hover:bg-[#f7f5f8]")}
+              onClick={() => setView("table")}
+              type="button"
+            >
+              <FiList className="size-3.5" /> Table
+            </button>
+          </div>
+          <Button className="bg-[#291b32] hover:bg-[#473252]" onClick={() => { setEditing(null); setDialogOpen(true); }}>
+            <FiPlus className="size-4" /> New account
+          </Button>
+        </div>
       )}
-      description="Track potential deals through your pipeline."
-      title="Leads"
+      description="Companies in your pipeline, from first touch to close."
+      title="Accounts"
     >
+      {confirmElement}
       {error && <p className="mb-3 bg-red-50 px-3.5 py-2.5 text-xs text-red-700">{error}</p>}
-      <div className="overflow-x-auto rounded-lg border border-[#eeeaf1] bg-white">
-        <table className="w-full text-left text-xs">
-          <thead>
-            <tr className="border-b border-[#eeeaf1] text-[10px] uppercase tracking-[0.1em] text-[#a49ba9]">
-              <th className="px-4 py-3 font-semibold">Name</th>
-              <th className="px-4 py-3 font-semibold">Company</th>
-              <th className="px-4 py-3 font-semibold">Status</th>
-              <th className="px-4 py-3 font-semibold">Value</th>
-              {leadFields.map((field) => <th className="px-4 py-3 font-semibold" key={field.id}>{field.name}</th>)}
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {leads === null && <tr><td className="px-4 py-6 text-[#928995]" colSpan={99}>Loading leads…</td></tr>}
-            {leads !== null && leads.length === 0 && <tr><td className="px-4 py-6 text-[#928995]" colSpan={99}>No leads yet.</td></tr>}
-            {leads?.map((lead) => (
-              <tr className="border-b border-[#f4f2f5] last:border-0 hover:bg-[#faf9fb]" key={lead.id}>
-                <td className="px-4 py-3 font-medium">{lead.name}</td>
-                <td className="px-4 py-3 text-[#716b76]">{lead.company || "—"}</td>
-                <td className="px-4 py-3"><span className="rounded-full bg-[#f3eef7] px-2 py-0.5 text-[10px] font-medium text-[#5c3f6e]">{LEAD_STATUS_LABEL[lead.status]}</span></td>
-                <td className="px-4 py-3 text-[#716b76]">{lead.value ? `$${lead.value.toLocaleString()}` : "—"}</td>
-                {leadFields.map((field) => <td className="px-4 py-3 text-[#716b76]" key={field.id}>{renderCustomValue(field, lead.customValues[field.id])}</td>)}
-                <td className="px-2 py-3 text-right">
-                  <div className="flex justify-end gap-1">
-                    <Button className="h-7 px-2 text-[11px]" onClick={() => { setEditing(lead); setDialogOpen(true); }} size="sm" variant="outline">Edit</Button>
-                    <Button className="h-7 w-7 p-0 text-[#a49ba9] hover:bg-red-50 hover:text-red-700" onClick={() => void remove(lead)} size="sm" variant="ghost"><FiTrash2 className="size-3.5" /></Button>
-                  </div>
-                </td>
+      {view === "board" && (
+        <div className="min-h-0 flex-1 overflow-x-auto pb-4">
+          <AccountsKanban
+            accounts={accounts ?? []}
+            onEditAccount={(account) => { setEditing(account); setDialogOpen(true); }}
+            onMove={moveAccount}
+            onStagesChanged={loadStages}
+            stages={stages}
+          />
+        </div>
+      )}
+      {view === "table" && (
+        <div className="overflow-x-auto rounded-lg border border-[#eeeaf1] bg-white">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-[#eeeaf1] text-[10px] uppercase tracking-[0.1em] text-[#a49ba9]">
+                <th className="px-4 py-3 font-semibold">Name</th>
+                <th className="px-4 py-3 font-semibold">Stage</th>
+                <th className="px-4 py-3 font-semibold">Value</th>
+                <th className="px-4 py-3 font-semibold">Email</th>
+                {accountFields.map((field) => <th className="px-4 py-3 font-semibold" key={field.id}>{field.name}</th>)}
+                <th className="px-4 py-3" />
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <LeadDialog fieldList={leadFields} lead={editing} onOpenChange={setDialogOpen} onSaved={loadLeads} open={dialogOpen} />
+            </thead>
+            <tbody>
+              {accounts === null && <tr><td className="px-4 py-6 text-[#928995]" colSpan={99}>Loading accounts…</td></tr>}
+              {accounts !== null && accounts.length === 0 && <tr><td className="px-4 py-6 text-[#928995]" colSpan={99}>No accounts yet.</td></tr>}
+              {accounts?.map((account) => (
+                <tr className="border-b border-[#f4f2f5] last:border-0 hover:bg-[#faf9fb]" key={account.id}>
+                  <td className="px-4 py-3 font-medium">{account.name}</td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f3eef7] px-2 py-0.5 text-[10px] font-medium text-[#5c3f6e]">
+                      <span className="size-1.5 rounded-full" style={{ backgroundColor: account.stage.color }} />
+                      {account.stage.name}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-[#716b76]">{account.value ? `$${account.value.toLocaleString()}` : "—"}</td>
+                  <td className="px-4 py-3 text-[#716b76]">{account.email || "—"}</td>
+                  {accountFields.map((field) => <td className="px-4 py-3 text-[#716b76]" key={field.id}>{renderCustomValue(field, account.customValues[field.id])}</td>)}
+                  <td className="px-2 py-3 text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button className="h-7 px-2 text-[11px]" onClick={() => { setEditing(account); setDialogOpen(true); }} size="sm" variant="outline">Edit</Button>
+                      <Button className="h-7 w-7 p-0 text-[#a49ba9] hover:bg-red-50 hover:text-red-700" onClick={() => void remove(account)} size="sm" variant="ghost"><FiTrash2 className="size-3.5" /></Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <AccountDialog
+        fieldList={accountFields}
+        account={editing}
+        onOpenChange={setDialogOpen}
+        onSaved={() => {
+          loadAccounts();
+          loadStages();
+        }}
+        open={dialogOpen}
+        stages={stages}
+      />
     </AppPageFrame>
   );
 }
@@ -429,19 +739,19 @@ export function CrmLeadsPage() {
 function ContactDialog({
   contact,
   fieldList,
-  leads,
+  accounts,
   onOpenChange,
   onSaved,
   open,
 }: {
   contact: Contact | null;
   fieldList: CustomField[];
-  leads: Lead[];
+  accounts: Account[];
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
   open: boolean;
 }) {
-  const [form, setForm] = useState({ name: "", email: "", phone: "", company: "", role: "", leadId: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", role: "", accountId: "" });
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -454,15 +764,18 @@ function ContactDialog({
       name: contact?.name ?? "",
       email: contact?.email ?? "",
       phone: contact?.phone ?? "",
-      company: contact?.company ?? "",
       role: contact?.role ?? "",
-      leadId: contact?.leadId ?? "",
+      accountId: contact?.accountId ?? accounts[0]?.id ?? "",
     });
-  }, [contact, open]);
+  }, [contact, open, accounts]);
 
   async function submit() {
     if (!form.name.trim()) {
       setError("A contact name is required.");
+      return;
+    }
+    if (!form.accountId) {
+      setError("Every contact must belong to an account.");
       return;
     }
     setSaving(true);
@@ -472,9 +785,8 @@ function ContactDialog({
         name: form.name,
         email: form.email,
         phone: form.phone,
-        company: form.company,
         role: form.role,
-        leadId: form.leadId || null,
+        accountId: form.accountId,
       };
       const result = contact
         ? await api<{ contact: Contact }>(`/api/crm/contacts/${contact.id}`, { body: JSON.stringify(body), method: "PATCH" })
@@ -494,7 +806,7 @@ function ContactDialog({
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>{contact ? "Edit contact" : "New contact"}</DialogTitle>
-          <DialogDescription>People you do business with.</DialogDescription>
+          <DialogDescription>People who work at the accounts you sell to.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
           <label className="space-y-2 text-xs font-medium">
@@ -511,23 +823,18 @@ function ContactDialog({
               <Input className="h-9 border-[#e9e6ed]" onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="+1 555 010 2030" value={form.phone} />
             </label>
             <label className="space-y-2 text-xs font-medium">
-              Company
-              <Input className="h-9 border-[#e9e6ed]" onChange={(event) => setForm({ ...form, company: event.target.value })} placeholder="Company name" value={form.company} />
-            </label>
-            <label className="space-y-2 text-xs font-medium">
               Role
               <Input className="h-9 border-[#e9e6ed]" onChange={(event) => setForm({ ...form, role: event.target.value })} placeholder="e.g. Head of Purchasing" value={form.role} />
             </label>
           </div>
           <label className="space-y-2 text-xs font-medium">
-            Linked lead
-            <Select value={form.leadId} onValueChange={(leadId) => setForm({ ...form, leadId })}>
+            Account
+            <Select value={form.accountId} onValueChange={(accountId) => setForm({ ...form, accountId })}>
               <SelectTrigger className="h-9 w-full border-[#e9e6ed] text-xs font-normal">
-                <SelectValue placeholder="None" />
+                <SelectValue placeholder="Pick an account" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                {leads.map((lead) => <SelectItem key={lead.id} value={lead.id}>{lead.name}</SelectItem>)}
+                {accounts.map((account) => <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </label>
@@ -546,9 +853,9 @@ function ContactDialog({
 }
 
 export function CrmContactsPage() {
-  const { contactFields } = useLeadFields();
+  const { contactFields } = useCrmFields();
   const [contacts, setContacts] = useState<Contact[] | null>(null);
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Contact | null>(null);
   const [error, setError] = useState("");
@@ -561,7 +868,7 @@ export function CrmContactsPage() {
 
   useEffect(() => {
     loadContacts();
-    api<{ leads: Lead[] }>("/api/crm/leads").then((result) => setLeads(result.leads)).catch(() => setLeads([]));
+    api<{ accounts: Account[] }>("/api/crm/accounts").then((result) => setAccounts(result.accounts)).catch(() => setAccounts([]));
   }, [loadContacts]);
 
   async function remove(contact: Contact) {
@@ -573,8 +880,6 @@ export function CrmContactsPage() {
     }
   }
 
-  const leadName = (leadId: string | null) => leads.find((lead) => lead.id === leadId)?.name ?? "—";
-
   return (
     <AppPageFrame
       action={(
@@ -582,7 +887,7 @@ export function CrmContactsPage() {
           <FiPlus className="size-4" /> New contact
         </Button>
       )}
-      description="People and companies in your network."
+      description="People at the accounts in your pipeline. Every contact belongs to an account."
       title="Contacts"
     >
       {error && <p className="mb-3 bg-red-50 px-3.5 py-2.5 text-xs text-red-700">{error}</p>}
@@ -591,9 +896,9 @@ export function CrmContactsPage() {
           <thead>
             <tr className="border-b border-[#eeeaf1] text-[10px] uppercase tracking-[0.1em] text-[#a49ba9]">
               <th className="px-4 py-3 font-semibold">Name</th>
-              <th className="px-4 py-3 font-semibold">Company</th>
+              <th className="px-4 py-3 font-semibold">Account</th>
               <th className="px-4 py-3 font-semibold">Email</th>
-              <th className="px-4 py-3 font-semibold">Lead</th>
+              <th className="px-4 py-3 font-semibold">Role</th>
               {contactFields.map((field) => <th className="px-4 py-3 font-semibold" key={field.id}>{field.name}</th>)}
               <th className="px-4 py-3" />
             </tr>
@@ -604,9 +909,9 @@ export function CrmContactsPage() {
             {contacts?.map((contact) => (
               <tr className="border-b border-[#f4f2f5] last:border-0 hover:bg-[#faf9fb]" key={contact.id}>
                 <td className="px-4 py-3 font-medium">{contact.name}</td>
-                <td className="px-4 py-3 text-[#716b76]">{contact.company || "—"}</td>
+                <td className="px-4 py-3 text-[#716b76]">{contact.account?.name ?? "—"}</td>
                 <td className="px-4 py-3 text-[#716b76]">{contact.email || "—"}</td>
-                <td className="px-4 py-3 text-[#716b76]">{leadName(contact.leadId)}</td>
+                <td className="px-4 py-3 text-[#716b76]">{contact.role || "—"}</td>
                 {contactFields.map((field) => <td className="px-4 py-3 text-[#716b76]" key={field.id}>{renderCustomValue(field, contact.customValues[field.id])}</td>)}
                 <td className="px-2 py-3 text-right">
                   <div className="flex justify-end gap-1">
@@ -619,7 +924,10 @@ export function CrmContactsPage() {
           </tbody>
         </table>
       </div>
-      <ContactDialog contact={editing} fieldList={contactFields} leads={leads} onOpenChange={setDialogOpen} onSaved={loadContacts} open={dialogOpen} />
+      {accounts.length === 0 && contacts !== null && contacts.length === 0 && (
+        <p className="mt-3 text-xs text-[#928995]">Create an account first — every contact needs one.</p>
+      )}
+      <ContactDialog contact={editing} fieldList={contactFields} accounts={accounts} onOpenChange={setDialogOpen} onSaved={loadContacts} open={dialogOpen} />
     </AppPageFrame>
   );
 }
@@ -627,9 +935,9 @@ export function CrmContactsPage() {
 /* ----------------------------------- Tasks --------------------------------- */
 
 export function CrmTasksPage() {
-  const { taskFields } = useLeadFields();
+  const { taskFields } = useCrmFields();
   const [tasks, setTasks] = useState<CrmTask[] | null>(null);
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -646,7 +954,7 @@ export function CrmTasksPage() {
 
   useEffect(() => {
     loadTasks();
-    api<{ leads: Lead[] }>("/api/crm/leads").then((result) => setLeads(result.leads)).catch(() => setLeads([]));
+    api<{ accounts: Account[] }>("/api/crm/accounts").then((result) => setAccounts(result.accounts)).catch(() => setAccounts([]));
     api<{ contacts: Contact[] }>("/api/crm/contacts").then((result) => setContacts(result.contacts)).catch(() => setContacts([]));
   }, [loadTasks]);
 
@@ -699,7 +1007,7 @@ export function CrmTasksPage() {
           <FiPlus className="size-4" /> Add task
         </Button>
       )}
-      description="Follow-ups and to-dos tied to your pipeline."
+      description="Follow-ups and to-dos tied to your accounts."
       title="Tasks"
     >
       <Dialog onOpenChange={setCreateOpen} open={createOpen}>
@@ -762,7 +1070,7 @@ export function CrmTasksPage() {
               <p className="mt-0.5 truncate text-[10px] text-[#968d9a]">
                 {TASK_STATUS_LABEL[task.status]}
                 {task.dueDate ? ` · Due ${formatDate(task.dueDate)}` : ""}
-                {task.leadId ? ` · Lead: ${leads.find((lead) => lead.id === task.leadId)?.name ?? "—"}` : ""}
+                {task.accountId ? ` · Account: ${accounts.find((account) => account.id === task.accountId)?.name ?? "—"}` : ""}
                 {task.contactId ? ` · Contact: ${contacts.find((contact) => contact.id === task.contactId)?.name ?? "—"}` : ""}
               </p>
             </div>
@@ -780,9 +1088,9 @@ export function CrmNotesPage() {
   const [notes, setNotes] = useState<CrmNote[] | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [body, setBody] = useState("");
-  const [leadId, setLeadId] = useState("");
+  const [accountId, setAccountId] = useState("");
   const [contactId, setContactId] = useState("");
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -790,16 +1098,16 @@ export function CrmNotesPage() {
 
   const loadNotes = useCallback(() => {
     const params = new URLSearchParams();
-    if (leadId) params.set("leadId", leadId);
+    if (accountId) params.set("accountId", accountId);
     if (contactId) params.set("contactId", contactId);
     api<{ notes: CrmNote[] }>(`/api/crm/notes${params.size ? `?${params}` : ""}`)
       .then((result) => setNotes(result.notes))
       .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Could not load notes."));
-  }, [contactId, leadId]);
+  }, [accountId, contactId]);
 
   useEffect(() => {
     loadNotes();
-    api<{ leads: Lead[] }>("/api/crm/leads").then((result) => setLeads(result.leads)).catch(() => setLeads([]));
+    api<{ accounts: Account[] }>("/api/crm/accounts").then((result) => setAccounts(result.accounts)).catch(() => setAccounts([]));
     api<{ contacts: Contact[] }>("/api/crm/contacts").then((result) => setContacts(result.contacts)).catch(() => setContacts([]));
   }, [loadNotes]);
 
@@ -809,11 +1117,11 @@ export function CrmNotesPage() {
     setCreateError("");
     try {
       await api("/api/crm/notes", {
-        body: JSON.stringify({ body, leadId: leadId || null, contactId: contactId || null }),
+        body: JSON.stringify({ body, accountId: accountId || null, contactId: contactId || null }),
         method: "POST",
       });
       setBody("");
-      setLeadId("");
+      setAccountId("");
       setContactId("");
       setCreateOpen(false);
       loadNotes();
@@ -864,13 +1172,13 @@ export function CrmNotesPage() {
               value={body}
             />
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Select value={leadId} onValueChange={setLeadId}>
+              <Select value={accountId} onValueChange={setAccountId}>
                 <SelectTrigger className="h-8 w-full border-[#e9e6ed] text-[11px] font-normal sm:w-48">
-                  <SelectValue placeholder="Link a lead (optional)" />
+                  <SelectValue placeholder="Link an account (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No lead</SelectItem>
-                  {leads.map((lead) => <SelectItem key={lead.id} value={lead.id}>{lead.name}</SelectItem>)}
+                  <SelectItem value="none">No account</SelectItem>
+                  {accounts.map((account) => <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Select value={contactId} onValueChange={setContactId}>
@@ -903,7 +1211,7 @@ export function CrmNotesPage() {
             <div className="mt-2 flex items-center justify-between gap-2">
               <p className="text-[10px] text-[#a49ba9]">
                 {new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "numeric" }).format(new Date(note.createdAt))}
-                {note.leadId ? ` · ${leads.find((lead) => lead.id === note.leadId)?.name ?? ""}` : ""}
+                {note.accountId ? ` · ${accounts.find((account) => account.id === note.accountId)?.name ?? ""}` : ""}
                 {note.contactId ? ` · ${contacts.find((contact) => contact.id === note.contactId)?.name ?? ""}` : ""}
               </p>
               <button
@@ -929,7 +1237,7 @@ export function CrmFieldsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [type, setType] = useState<FieldType>("TEXT");
-  const [appliesTo, setAppliesTo] = useState<FieldEntity>("LEAD");
+  const [appliesTo, setAppliesTo] = useState<FieldEntity>("ACCOUNT");
   const [options, setOptions] = useState("");
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -967,7 +1275,7 @@ export function CrmFieldsPage() {
       setName("");
       setOptions("");
       setType("TEXT");
-      setAppliesTo("LEAD");
+      setAppliesTo("ACCOUNT");
       setCreateOpen(false);
       loadFields();
     } catch (createError) {
@@ -986,7 +1294,7 @@ export function CrmFieldsPage() {
     }
   }
 
-  const entityLabel: Record<FieldEntity, string> = { LEAD: "Leads", CONTACT: "Contacts", TASK: "Tasks" };
+  const entityLabel: Record<FieldEntity, string> = { ACCOUNT: "Accounts", CONTACT: "Contacts", TASK: "Tasks" };
 
   return (
     <AppPageFrame
@@ -1001,7 +1309,7 @@ export function CrmFieldsPage() {
           <FiPlus className="size-4" /> New field
         </Button>
       )}
-      description="Add your own columns to leads, contacts, and tasks."
+      description="Add your own columns to accounts, contacts, and tasks."
       title="Custom fields"
     >
       <Dialog onOpenChange={setCreateOpen} open={createOpen}>
@@ -1039,7 +1347,7 @@ export function CrmFieldsPage() {
                 <Select value={appliesTo} onValueChange={(next) => setAppliesTo(next as FieldEntity)}>
                   <SelectTrigger className="h-9 w-full border-[#e9e6ed] text-xs font-normal"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="LEAD">Leads</SelectItem>
+                    <SelectItem value="ACCOUNT">Accounts</SelectItem>
                     <SelectItem value="CONTACT">Contacts</SelectItem>
                     <SelectItem value="TASK">Tasks</SelectItem>
                   </SelectContent>

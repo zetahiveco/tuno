@@ -13,6 +13,7 @@ import {
 } from "react-icons/fi";
 import { api } from "@/lib/api-client";
 import { AppPageFrame } from "@/general/frontend/app-shell";
+import { useConfirm } from "@/components/confirm-alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -38,6 +39,7 @@ export function MailerAudiencesPage() {
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const { confirm, element: confirmElement } = useConfirm();
 
   const loadContacts = useCallback(async (query: string) => {
     setError("");
@@ -71,7 +73,11 @@ export function MailerAudiencesPage() {
   }
 
   async function deleteContact(contact: MailerContact) {
-    if (!window.confirm(`Remove ${contact.email} from your audience?`)) return;
+    const confirmed = await confirm({
+      title: `Remove ${contact.email}?`,
+      description: "This removes the contact from your audience. This action cannot be undone.",
+    });
+    if (!confirmed) return;
     try {
       await api(`/api/mailer/contacts/${contact.id}`, { method: "DELETE" });
       setContacts((current) => current.filter((entry) => entry.id !== contact.id));
@@ -97,6 +103,7 @@ export function MailerAudiencesPage() {
       description="Everyone you can email — contacts and their properties."
       title="Audiences"
     >
+      {confirmElement}
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <div className="relative">
           <FiSearch className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-[#a49ba9]" />

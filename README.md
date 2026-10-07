@@ -1,6 +1,6 @@
 # Tuno
 
-A self-hostable, multi-app workspace built with **Bun**, **React**, and **PostgreSQL**. Tuno ships with a shared core (authentication, teams, settings) and a suite of modular apps — Mailer, Notes, Forms, Scheduler, CRM, Tasks, Documents, Websites, and CMS — each with its own Prisma schema, generated client, and database namespace.
+A self-hostable, multi-app workspace built with **Bun**, **React**, and **PostgreSQL**. Tuno ships with a shared core (authentication, teams, settings) and a suite of modular apps — Mailer, Notes, Forms, Scheduler, CRM, Tasks, Documents, and CMS — each with its own Prisma schema, generated client, and database namespace.
 
 ## Features
 
@@ -8,9 +8,8 @@ A self-hostable, multi-app workspace built with **Bun**, **React**, and **Postgr
 - **Invitation-based team management** — admins invite members by email. Invitations are single-use, expire after 48 hours, and are delivered over SMTP.
 - **Secure sessions** — passwords hashed with Argon2id (via `Bun.password`), opaque session tokens stored as SHA-256 hashes, HttpOnly cookies with a `Secure` flag in production.
 - **API keys** — authenticated users can create named, optionally expiring API keys and use them to call public API endpoints from scripts and integrations.
-- **Modular app architecture** — General, Mailer, Notes, Forms, Scheduler, CRM, Tasks, Documents, Websites, and CMS each own a separate Prisma schema and generated client, isolated in their own Postgres schema (`general`, `mailer`, `notes`, `forms`, `scheduler`, `crm`, `tasks`, `documents`, `websites`, `cms`).
+- **Modular app architecture** — General, Mailer, Notes, Forms, Scheduler, CRM, Tasks, Documents, and CMS each own a separate Prisma schema and generated client, isolated in their own Postgres schema (`general`, `mailer`, `notes`, `forms`, `scheduler`, `crm`, `tasks`, `documents`, `cms`).
 - **Shared settings** — key/value workspace settings exposed through a small REST API.
-- **AI Website Builder** — chat-driven site generation with the Vercel AI SDK (OpenAI models, `gpt-5.6-sol` by default), live preview, source code editing, and every revision committed to S3 like a remote git. Publish any site to a shareable link (`/p/<slug>`). The builder can read your CMS collections as tools. (`/websites`)
 - **Headless CMS** — Strapi-style content collections with custom fields (text, number, boolean, date, select, and a BlockNote rich-text editor for long content), draft/publish workflow, and a standalone REST content API you can consume from anywhere. (`/cms`)
 - **Modern React client** — React 19, React Router, React Hook Form with Zod validation, Tailwind CSS 4, and a shared component library under `components/`.
 
@@ -56,7 +55,7 @@ A self-hostable, multi-app workspace built with **Bun**, **React**, and **Postgr
    bun run db:setup
    ```
 
-   This creates the shared database, generates the eight Prisma clients (General, Mailer, Notes, Forms, Scheduler, CRM, Tasks, Documents), and pushes each schema.
+   This creates the shared database, generates the Prisma clients (General, Mailer, Notes, Forms, Scheduler, CRM, Tasks, Documents, CMS), and pushes each schema.
 
 4. **Start the development server**
 
@@ -77,14 +76,13 @@ A self-hostable, multi-app workspace built with **Bun**, **React**, and **Postgr
 | `PORT`          | HTTP port the server listens on                                    | `5000`                   |
 | `NODE_ENV`      | `development` or `production` (enables `Secure` cookies in prod)   | `development`            |
 | `APP_URL`       | Public URL of the app, used in invitation emails                   | `http://localhost:5000`  |
-| `DATABASE_URL`  | Shared Postgres connection string for all five app schemas         | —                        |
+| `DATABASE_URL`  | Shared Postgres connection string for all app schemas              | —                        |
 | `SMTP_HOST`     | SMTP server hostname (required for invitations)                    | —                        |
 | `SMTP_PORT`     | SMTP server port                                                   | `465`                    |
 | `SMTP_USER`     | SMTP username                                                      | —                        |
 | `SMTP_PASS`     | SMTP password                                                      | —                        |
 | `SMTP_FROM`     | From address for outgoing email (falls back to `SMTP_USER`)        | —                        |
-| `OPENAI_API_KEY`| OpenAI API key for the AI website builder (Websites app)           | —                        |
-| `AWS_S3_ACCESS_KEY_ID` | S3 access key (website source control, publishing, documents) | —                       |
+| `AWS_S3_ACCESS_KEY_ID` | S3 access key (documents)                                   | —                        |
 | `AWS_S3_SECRET_ACCESS_KEY` | S3 secret key                                     | —                        |
 | `AWS_S3_ENDPOINT_URL` | S3-compatible endpoint (AWS, R2, MinIO…)                    | —                        |
 | `AWS_STORAGE_BUCKET_NAME` | S3 bucket name                                        | —                        |
@@ -99,7 +97,7 @@ A self-hostable, multi-app workspace built with **Bun**, **React**, and **Postgr
 | `bun run start`        | Build the client and run the server (production)                            |
 | `bun run build`        | Compile Tailwind CSS and bundle the React client into `public/`             |
 | `bun run db:setup`     | Create the database + Postgres schemas, generate clients, push all schemas  || `bun run db:push`      | Push all Prisma schemas to the database                                     |
-| `bun run prisma:generate` | Regenerate all five Prisma clients                                        |
+| `bun run prisma:generate` | Regenerate all Prisma clients                                            |
 | `bun run typecheck`    | Run TypeScript checks (`tsc --noEmit`)                                      |
 
 ## Architecture
@@ -159,12 +157,6 @@ tuno/
 │   ├── frontend/              # folder browser, uploader, share dialogs, public viewer
 │   ├── prisma/                # Documents schema (documents.* tables)
 │   └── generated/client/
-├── websites/                  # Websites app — AI builder (lovable.dev-style)
-│   ├── api/routes/            # website CRUD, commits, chat streaming, publish
-│   ├── api/services/          # S3 remote-git store, SSR renderer, AI SDK chat + CMS tools
-│   ├── frontend/              # sites list, chat panel, live preview, code, history
-│   ├── prisma/                # Websites schema (websites.* tables)
-│   └── generated/client/
 ├── cms/                       # CMS app — Strapi-style content collections
 │   ├── api/routes/            # collections, fields, entries, standalone public API
 │   ├── api/services/
@@ -180,7 +172,7 @@ tuno/
 
 ### Database layout
 
-All apps connect to the **same Postgres database** from a single `DATABASE_URL`, but each app's tables live in their own Postgres schema (`general`, `mailer`, `notes`, `forms`, `scheduler`, `crm`, `tasks`, `documents`, `websites`, `cms`). Prisma clients are generated per app with the `bun` runtime, and connection strings live in each `prisma.config.ts` rather than the schema files.
+All apps connect to the **same Postgres database** from a single `DATABASE_URL`, but each app's tables live in their own Postgres schema (`general`, `mailer`, `notes`, `forms`, `scheduler`, `crm`, `tasks`, `documents`, `cms`). Prisma clients are generated per app with the `bun` runtime, and connection strings live in each `prisma.config.ts` rather than the schema files.
 
 See [API.md](API.md) for the full API reference (General, Mailer, Notes).
 
@@ -201,7 +193,6 @@ See [API.md](API.md) for the full API reference (General, Mailer, Notes).
 - **CRM** — pipeline analytics, bulk import/export, and lead assignment (`/crm`)
 - **Tasks** — real-time board updates, labels/checklists, and board templates (`/tasks`)
 - **Documents** — file previews, drag-and-drop upload, and search (`/documents`)
-- **Websites** — more model providers, multi-page sites, and custom domains (`/websites`)
 - **CMS** — media fields, entry relationships, and webhooks (`/cms`)
 
 ## Contributing

@@ -10,17 +10,6 @@ datasource db {
   schemas  = ["crm"]
 }
 
-enum LeadStatus {
-  NEW
-  CONTACTED
-  QUALIFIED
-  PROPOSAL
-  WON
-  LOST
-
-  @@schema("crm")
-}
-
 enum TaskStatus {
   TODO
   IN_PROGRESS
@@ -40,32 +29,46 @@ enum CustomFieldType {
 }
 
 enum CustomFieldEntity {
-  LEAD
+  ACCOUNT
   CONTACT
   TASK
 
   @@schema("crm")
 }
 
-model Lead {
-  id          String     @id @default(uuid())
+model PipelineStage {
+  id          String   @id @default(uuid())
   name        String
-  company     String     @default("")
-  email       String     @default("")
-  phone       String     @default("")
-  source      String     @default("")
-  status      LeadStatus @default(NEW)
-  value       Float      @default(0)
+  color       String   @default("#755984")
+  position    Int      @default(0)
   createdById String
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdAt   DateTime @default(now())
 
-  tasks    CrmTask[]
-  notes    CrmNote[]
-  contacts Contact[]
+  accounts Account[]
 
   @@index([createdById])
-  @@index([status])
+  @@schema("crm")
+}
+
+model Account {
+  id          String   @id @default(uuid())
+  name        String
+  email       String   @default("")
+  phone       String   @default("")
+  source      String   @default("")
+  value       Float    @default(0)
+  stageId     String
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stage    PipelineStage @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  contacts Contact[]
+  tasks    CrmTask[]
+  notes    CrmNote[]
+
+  @@index([createdById])
+  @@index([stageId])
   @@index([updatedAt])
   @@schema("crm")
 }
@@ -75,19 +78,18 @@ model Contact {
   name        String
   email       String   @default("")
   phone       String   @default("")
-  company     String   @default("")
   role        String   @default("")
-  leadId      String?
+  accountId   String
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  lead   Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  tasks  CrmTask[]
-  notes  CrmNote[]
+  account Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tasks   CrmTask[]
+  notes   CrmNote[]
 
   @@index([createdById])
-  @@index([leadId])
+  @@index([accountId])
   @@index([updatedAt])
   @@schema("crm")
 }
@@ -97,19 +99,19 @@ model CrmTask {
   title       String
   status      TaskStatus @default(TODO)
   dueDate     DateTime?
-  leadId      String?
+  accountId   String?
   contactId   String?
   createdById String
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  lead    Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  account Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   contact Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   @@index([createdById])
   @@index([dueDate])
   @@index([status])
-  @@index([leadId])
+  @@index([accountId])
   @@index([contactId])
   @@schema("crm")
 }
@@ -117,17 +119,17 @@ model CrmTask {
 model CrmNote {
   id          String   @id @default(uuid())
   body        String   @default("")
-  leadId      String?
+  accountId   String?
   contactId   String?
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  lead    Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  account Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   contact Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   @@index([createdById])
-  @@index([leadId])
+  @@index([accountId])
   @@index([contactId])
   @@schema("crm")
 }

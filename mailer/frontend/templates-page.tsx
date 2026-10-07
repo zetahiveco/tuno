@@ -4,6 +4,7 @@ import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { formatDistanceToNow } from "date-fns";
 import { FiArrowLeft, FiCheck, FiEdit3, FiEye, FiLayers, FiLoader, FiPlus, FiSend, FiTrash2, FiX } from "react-icons/fi";
+import { useConfirm } from "@/components/confirm-alert";
 import { api, ApiRequestError } from "@/lib/api-client";
 import { AppPageFrame } from "@/general/frontend/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +43,9 @@ const SAMPLE_VALUES: Record<string, string> = {
   name: "Jordan",
 };
 
+/** Placeholder unsubscribe link shown in previews; replaced per recipient at send time. */
+const SAMPLE_UNSUBSCRIBE_URL = "https://example.com/unsubscribe";
+
 /* ------------------------------- Template list ------------------------------ */
 
 export function TemplatesHomePage() {
@@ -51,6 +55,7 @@ export function TemplatesHomePage() {
   const [error, setError] = useState("");
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { confirm, element: confirmElement } = useConfirm();
 
   const loadTemplates = useCallback(async () => {
     setError("");
@@ -79,7 +84,11 @@ export function TemplatesHomePage() {
   }
 
   async function deleteTemplate(template: TemplateSummary) {
-    if (!window.confirm(`Delete "${template.name || "Untitled template"}"? Campaigns keep their history.`)) return;
+    const confirmed = await confirm({
+      title: `Delete "${template.name || "Untitled template"}"?`,
+      description: "This permanently removes the template. Campaigns that already sent keep their history. This action cannot be undone.",
+    });
+    if (!confirmed) return;
     setDeletingId(template.id);
     try {
       await api(`/api/mailer/templates/${template.id}`, { method: "DELETE" });
@@ -101,6 +110,7 @@ export function TemplatesHomePage() {
       description="Block-based email templates for every send."
       title="Templates"
     >
+      {confirmElement}
       <p className="mb-5 text-xs text-[#847b89]">
         {loading ? "Loading templates…" : `${templates.length} template${templates.length === 1 ? "" : "s"}`}
       </p>
@@ -214,6 +224,21 @@ function TemplateEditor({ template }: { template: LoadedTemplate }) {
   const [testEmail, setTestEmail] = useState("");
   const [testing, setTesting] = useState(false);
   const [testMessage, setTestMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [footerText, setFooterText] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    api<{ footerText: string }>("/api/mailer/settings")
+      .then((result) => {
+        if (!cancelled) setFooterText(result.footerText);
+      })
+      .catch(() => {
+        /* preview falls back to the default footer */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nameRef = useRef(name);
@@ -227,7 +252,7 @@ function TemplateEditor({ template }: { template: LoadedTemplate }) {
   });
 
   const save = useCallback(
-    async (next: { name: string; subject: string; blocks: string }) => {
+    async (next: { name: string; subject: string; blocks: EmailBlock[] }) => {
       setSaveState("saving");
       setSaveError("");
       try {
@@ -248,7 +273,7 @@ function TemplateEditor({ template }: { template: LoadedTemplate }) {
     setSaveState("pending");
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      void save({ name: nameRef.current, subject: subjectRef.current, blocks: JSON.stringify(editor.document) });
+      void save({ name: nameRef.current, subject: subjectRef.current, blocks: editor.document as unknown as EmailBlock[] });
     }, 600);
   }, [editor, save]);
 
@@ -269,7 +294,18 @@ function TemplateEditor({ template }: { template: LoadedTemplate }) {
     return values;
   }, [variables]);
 
-  const previewHtml = useMemo(() => renderEmailHtml({ blocks, values: previewValues }), [blocks, previewValues]);
+  const previewHtml = useMemo(
+    () =>
+      renderEmailHtml({
+        blocks,
+        values: previewValues,
+        footerText: footerText || undefined,
+        // The real per-recipient unsubscribe link is signed and injected at send
+        // time; the preview just shows where it will appear in the footer.
+        unsubscribeUrl: SAMPLE_UNSUBSCRIBE_URL,
+      }),
+    [blocks, previewValues, footerText],
+  );
 
   function updateBlocks() {
     setBlocks(editor.document as unknown as EmailBlock[]);

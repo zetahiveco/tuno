@@ -1,6 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  closestCorners,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   FiArrowLeft,
   FiCalendar,
   FiCheckSquare,
@@ -32,6 +49,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { useConfirm } from "@/components/confirm-alert";
 import { AppPageFrame, AppShell, type AppNavPage } from "@/general/frontend/app-shell";
 import { api } from "@/lib/api-client";
 import { cn } from "cn";
@@ -116,6 +134,7 @@ function BoardShareDialog({
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const { confirm, element: confirmElement } = useConfirm();
 
   useEffect(() => {
     if (!open) return;
@@ -140,6 +159,7 @@ function BoardShareDialog({
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="sm:max-w-[420px]">
+        {confirmElement}
         <DialogHeader>
           <DialogTitle>Share "{board.name}"</DialogTitle>
           <DialogDescription>Teammates you share with can add and edit tasks.</DialogDescription>
@@ -254,6 +274,14 @@ function BoardShareDialog({
                     disabled={busy}
                     onClick={async () => {
                       setBusy(true);
+                      const confirmed = await confirm({
+                        title: `Remove ${person.name}'s access?`,
+                        description: "This person will no longer be able to open this board.",
+                      });
+                      if (!confirmed) {
+                        setBusy(false);
+                        return;
+                      }
                       try {
                         await api(`/api/tasks/boards/${board.id}/shares/${person.id}`, { method: "DELETE" });
                         await refresh();
@@ -298,6 +326,7 @@ export function TasksBoardsPage() {
   const [error, setError] = useState("");
   const [shareBoard, setShareBoard] = useState<BoardSummary | null>(null);
   const navigate = useNavigate();
+  const { confirm, element: confirmElement } = useConfirm();
 
   const loadBoards = useCallback(() => {
     api<{ boards: BoardSummary[] }>("/api/tasks/boards")
@@ -324,6 +353,11 @@ export function TasksBoardsPage() {
   }
 
   async function remove(board: BoardSummary) {
+    const confirmed = await confirm({
+      title: `Delete board "${board.name}"?`,
+      description: "This permanently deletes the board with all its columns, cards, and subtasks. This action cannot be undone.",
+    });
+    if (!confirmed) return;
     try {
       await api(`/api/tasks/boards/${board.id}`, { method: "DELETE" });
       setBoards((current) => (current ?? []).filter((entry) => entry.id !== board.id));
@@ -342,6 +376,7 @@ export function TasksBoardsPage() {
       description="Kanban boards for your team's work."
       title="Boards"
     >
+      {confirmElement}
       {error && <p className="mb-3 bg-red-50 px-3.5 py-2.5 text-xs text-red-700">{error}</p>}
       <Dialog
         onOpenChange={(open) => {
@@ -462,6 +497,75 @@ function CardChip({ card, assignees }: { card: Card; assignees: Assignee[] }) {
   );
 }
 
+/** Card rendered through dnd-kit so it can be sorted within and across columns. */
+function SortableCard({
+  assignees,
+  card,
+  onOpen,
+}: {
+  assignees: Assignee[];
+  card: Card;
+  onOpen: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ data: { columnId: card.columnId }, id: card.id });
+
+  return (
+    <div
+      {...attributes}
+      {...listeners}
+      className={cn(
+        "touch-none rounded-md border border-[#eeeaf1] bg-white px-3 py-2.5 shadow-sm transition hover:border-[#ddd3e4]",
+        isDragging && "opacity-40",
+      )}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onOpen();
+      }}
+      ref={setNodeRef}
+      role="button"
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      tabIndex={0}
+    >
+      <p className="text-xs font-medium">{card.title}</p>
+      <div className="mt-1.5"><CardChip assignees={assignees} card={card} /></div>
+    </div>
+  );
+}
+
+/** Drop target for a column's card list, so cards can be dropped into empty columns. */
+function ColumnDropArea({ children, columnId }: { children: React.ReactNode; columnId: string }) {
+  const { setNodeRef, isOver } = useDroppable({ id: columnId });
+  return (
+    <div
+      className={cn(
+        "min-h-0 flex-1 space-y-2 overflow-y-auto rounded-md px-2 pb-2",
+        isOver && "bg-[#ece5f2]",
+      )}
+      ref={setNodeRef}
+    >
+      {children}
+    </div>
+  );
+}
+
+function BoardCardDragOverlay({ card }: { card: Card | null }) {
+  if (!card) return null;
+  return (
+    <div className="w-[248px] rotate-2 rounded-md border border-[#ddd3e4] bg-white px-3 py-2.5 shadow-lg">
+      <p className="text-xs font-medium">{card.title}</p>
+      <div className="mt-1.5"><CardChip assignees={[]} card={card} /></div>
+    </div>
+  );
+}
+
+
 export function BoardPage() {
   const { boardId } = useParams<{ boardId: string }>();
   const navigate = useNavigate();
@@ -470,10 +574,11 @@ export function BoardPage() {
   const [newCardTitles, setNewCardTitles] = useState<Record<string, string>>({});
   const [newColumnName, setNewColumnName] = useState("");
   const [editingCard, setEditingCard] = useState<Card | null>(null);
-  const [dragCardId, setDragCardId] = useState<string | null>(null);
-  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const { confirm, element: confirmElement } = useConfirm();
 
   const loadBoard = useCallback(() => {
     if (!boardId) return;
@@ -527,21 +632,85 @@ export function BoardPage() {
     }
   }
 
-  async function moveCard(card: Card, columnId: string) {
-    if (!board || card.columnId === columnId) return;
-    setBoard({
-      ...board,
-      cards: board.cards.map((entry) => (entry.id === card.id ? { ...entry, columnId } : entry)),
-    });
-    try {
-      await api(`/api/tasks/cards/${card.id}`, { body: JSON.stringify({ columnId }), method: "PATCH" });
-    } catch {
-      loadBoard();
+  function handleDragStart(event: DragStartEvent) {
+    setActiveCardId(String(event.active.id));
+  }
+
+  /** Reorder within a column or move across columns, then persist positions. */
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveCardId(null);
+    if (!board) return;
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeCard = board.cards.find((entry) => entry.id === String(active.id));
+    if (!activeCard) return;
+
+    // If the drop landed on a sortable card, its container is the target column;
+    // otherwise the drop landed directly on a column drop area.
+    const overColumnId = over.data.current?.sortable?.containerId
+      ? String(over.data.current.sortable.containerId)
+      : board.columns.some((column) => column.id === over.id)
+        ? String(over.id)
+        : null;
+    if (!overColumnId) return;
+
+    const sameColumn = activeCard.columnId === overColumnId;
+    const targetList = board.cards
+      .filter((entry) => entry.columnId === overColumnId && entry.id !== activeCard.id)
+      .sort((a, b) => a.position - b.position);
+    const overCard = board.cards.find((entry) => entry.id === String(over.id));
+    const overIndex = overCard ? targetList.findIndex((entry) => entry.id === overCard.id) : -1;
+    const oldIndex = sameColumn ? targetList.findIndex((entry) => entry.id === activeCard.id) : -1;
+    let insertIndex: number;
+    if (overIndex >= 0) {
+      insertIndex = sameColumn && oldIndex >= 0 && oldIndex < overIndex ? overIndex + 1 : overIndex;
+    } else {
+      insertIndex = targetList.length;
     }
+    const reordered = [...targetList.slice(0, insertIndex), activeCard, ...targetList.slice(insertIndex)];
+
+    const updates = new Map<string, { columnId: string; position: number }>();
+    reordered.forEach((card, index) => {
+      if (card.columnId !== overColumnId || card.position !== index) {
+        updates.set(card.id, { columnId: overColumnId, position: index });
+      }
+    });
+    if (!sameColumn) {
+      board.cards
+        .filter((entry) => entry.columnId === activeCard.columnId && entry.id !== activeCard.id)
+        .sort((a, b) => a.position - b.position)
+        .forEach((card, index) => {
+          if (card.position !== index) updates.set(card.id, { columnId: card.columnId, position: index });
+        });
+    }
+    if (updates.size === 0) return;
+
+    setBoard((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        cards: current.cards.map((card) => {
+          const update = updates.get(card.id);
+          return update ? { ...card, columnId: update.columnId, position: update.position } : card;
+        }),
+      };
+    });
+
+    void (async () => {
+      try {
+        for (const [cardId, update] of updates) {
+          await api(`/api/tasks/cards/${cardId}`, { body: JSON.stringify(update), method: "PATCH" });
+        }
+      } catch {
+        loadBoard();
+      }
+    })();
   }
 
   return (
     <div className="flex h-full flex-col">
+      {confirmElement}
       <div className="flex h-[56px] shrink-0 items-center justify-between border-b border-[#eeeaf1] bg-white px-5">
         <div className="flex min-w-0 items-center gap-3">
           <Link className="flex items-center gap-1.5 text-[13px] font-medium text-[#716b76] transition hover:text-[#3e3543]" to="/tasks">
@@ -560,6 +729,11 @@ export function BoardPage() {
               <Button
                 className="h-8 border-[#eeeaf1] bg-white px-2.5 text-xs text-[#b05f5f] hover:bg-red-50"
                 onClick={async () => {
+                  const confirmed = await confirm({
+                    title: `Delete board "${board.name}"?`,
+                    description: "This permanently deletes the board with all its columns, cards, and subtasks. This action cannot be undone.",
+                  });
+                  if (!confirmed) return;
                   try {
                     await api(`/api/tasks/boards/${board.id}`, { method: "DELETE" });
                     navigate("/tasks");
@@ -577,93 +751,72 @@ export function BoardPage() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden p-5">
-        <div className="flex h-full items-start gap-4">
-          {board.columns.map((column) => {
-            const cards = board.cards.filter((card) => card.columnId === column.id);
-            return (
-              <div
-                className={cn(
-                  "flex max-h-full w-[280px] shrink-0 flex-col rounded-lg border border-[#eeeaf1] bg-[#f4f2f6]",
-                  dragOverColumn === column.id && dragCardId && "border-[#b59ac7] bg-[#f3eef7]",
-                )}
-                key={column.id}
-                onDragLeave={() => setDragOverColumn((current) => (current === column.id ? null : current))}
-                onDragOver={(event) => {
+      <DndContext collisionDetection={closestCorners} onDragEnd={handleDragEnd} onDragStart={handleDragStart} sensors={sensors}>
+        <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden p-5">
+          <div className="flex h-full items-start gap-4">
+            {board.columns.map((column) => {
+              const cards = board.cards
+                .filter((card) => card.columnId === column.id)
+                .sort((a, b) => a.position - b.position);
+              return (
+                <div
+                  className="flex max-h-full w-[280px] shrink-0 flex-col rounded-lg border border-[#eeeaf1] bg-[#f4f2f6]"
+                  key={column.id}
+                >
+                  <div className="flex items-center justify-between px-3 pb-1 pt-3">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#716b76]">{column.name}</span>
+                    <span className="text-[10px] text-[#a49ba9]">{cards.length}</span>
+                  </div>
+                  <ColumnDropArea columnId={column.id}>
+                    <SortableContext items={cards.map((card) => card.id)} strategy={verticalListSortingStrategy}>
+                      {cards.map((card) => (
+                        <SortableCard assignees={board.assignees} card={card} key={card.id} onOpen={() => setEditingCard(card)} />
+                      ))}
+                    </SortableContext>
+                  </ColumnDropArea>
+                  <form
+                    className="border-t border-[#e9e6ed] p-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void addCard(column.id);
+                    }}
+                  >
+                    <Input
+                      className="h-8 border-[#e9e6ed] bg-white text-xs"
+                      onChange={(event) => setNewCardTitles((current) => ({ ...current, [column.id]: event.target.value }))}
+                      placeholder="Add a task…"
+                      value={newCardTitles[column.id] ?? ""}
+                    />
+                  </form>
+                </div>
+              );
+            })}
+
+            {isOwner && (
+              <form
+                className="w-[240px] shrink-0 rounded-lg border border-dashed border-[#ddd3e4] p-3"
+                onSubmit={(event) => {
                   event.preventDefault();
-                  setDragOverColumn(column.id);
-                }}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  setDragOverColumn(null);
-                  const card = board.cards.find((entry) => entry.id === dragCardId);
-                  if (card) void moveCard(card, column.id);
-                  setDragCardId(null);
+                  void addColumn();
                 }}
               >
-                <div className="flex items-center justify-between px-3 pb-1 pt-3">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#716b76]">{column.name}</span>
-                  <span className="text-[10px] text-[#a49ba9]">{cards.length}</span>
-                </div>
-                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-2 pb-2">
-                  {cards.map((card) => (
-                    <div
-                      className="cursor-grab rounded-md border border-[#eeeaf1] bg-white px-3 py-2.5 shadow-sm transition hover:border-[#ddd3e4]"
-                      draggable
-                      key={card.id}
-                      onClick={() => setEditingCard(card)}
-                      onDragEnd={() => setDragCardId(null)}
-                      onDragStart={() => setDragCardId(card.id)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") setEditingCard(card);
-                      }}
-                    >
-                      <p className="text-xs font-medium">{card.title}</p>
-                      <div className="mt-1.5"><CardChip assignees={board.assignees} card={card} /></div>
-                    </div>
-                  ))}
-                </div>
-                <form
-                  className="border-t border-[#e9e6ed] p-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void addCard(column.id);
-                  }}
-                >
-                  <Input
-                    className="h-8 border-[#e9e6ed] bg-white text-xs"
-                    onChange={(event) => setNewCardTitles((current) => ({ ...current, [column.id]: event.target.value }))}
-                    placeholder="Add a task…"
-                    value={newCardTitles[column.id] ?? ""}
-                  />
-                </form>
-              </div>
-            );
-          })}
-
-          {isOwner && (
-            <form
-              className="w-[240px] shrink-0 rounded-lg border border-dashed border-[#ddd3e4] p-3"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void addColumn();
-              }}
-            >
-              <Input
-                className="h-8 border-[#e9e6ed] bg-white text-xs"
-                onChange={(event) => setNewColumnName(event.target.value)}
-                placeholder="New list name…"
-                value={newColumnName}
-              />
-              <Button className="mt-2 h-7 w-full bg-white text-[11px] text-[#716b76] hover:bg-[#f7f5f8]" size="sm" type="submit" variant="outline">
-                <FiPlus className="size-3" /> Add list
-              </Button>
-            </form>
-          )}
+                <Input
+                  className="h-8 border-[#e9e6ed] bg-white text-xs"
+                  onChange={(event) => setNewColumnName(event.target.value)}
+                  placeholder="New list name…"
+                  value={newColumnName}
+                />
+                <Button className="mt-2 h-7 w-full bg-white text-[11px] text-[#716b76] hover:bg-[#f7f5f8]" size="sm" type="submit" variant="outline">
+                  <FiPlus className="size-3" /> Add list
+                </Button>
+              </form>
+            )}
+          </div>
         </div>
-      </div>
+        <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.18, 0.67, 0.6, 1.22)" }}>
+          <BoardCardDragOverlay card={board.cards.find((card) => card.id === activeCardId) ?? null} />
+        </DragOverlay>
+      </DndContext>
 
       {editingCard && (
         <CardDialog
@@ -713,6 +866,7 @@ function CardDialog({
   const [dueDate, setDueDate] = useState(card.dueDate ? card.dueDate.slice(0, 10) : "");
   const [subtaskTitle, setSubtaskTitle] = useState("");
   const [saving, setSaving] = useState(false);
+  const { confirm, element: confirmElement } = useConfirm();
 
   async function save() {
     setSaving(true);
@@ -743,17 +897,28 @@ function CardDialog({
   }
 
   async function removeSubtask(subtaskId: string) {
+    const confirmed = await confirm({
+      title: "Remove this subtask?",
+      description: "This permanently removes the subtask. This action cannot be undone.",
+    });
+    if (!confirmed) return;
     await api(`/api/tasks/cards/${subtaskId}`, { method: "DELETE" });
     onOpenChange(false);
   }
 
   async function remove() {
+    const confirmed = await confirm({
+      title: `Delete "${card.title}"?`,
+      description: "This permanently deletes the task and its subtasks. This action cannot be undone.",
+    });
+    if (!confirmed) return;
     await api(`/api/tasks/cards/${card.id}`, { method: "DELETE" });
     onOpenChange(false);
   }
 
   return (
     <Dialog onOpenChange={onOpenChange} open>
+      {confirmElement}
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle>Task</DialogTitle>

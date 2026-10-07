@@ -115,3 +115,12 @@ model SmtpConfig {
 
   @@schema("mailer")
 }
+
+// Per-user mailer settings. Single row per user (keyed by userId).
+model Settings {
+  userId     String   @id
+  footerText String   @default("")
+  updatedAt  DateTime @updatedAt
+
+  @@schema("mailer")
+}

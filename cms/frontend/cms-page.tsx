@@ -17,6 +17,7 @@ import {
   FiPlus,
   FiTrash2,
 } from "react-icons/fi";
+import { useConfirm } from "@/components/confirm-alert";
 import { api } from "@/lib/api-client";
 import { AppShell } from "@/general/frontend/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -176,6 +177,7 @@ export function CmsCollectionsHomePage() {
   const [description, setDescription] = useState("");
   const [createError, setCreateError] = useState("");
   const [busy, setBusy] = useState(false);
+  const { confirm, element: confirmElement } = useConfirm();
 
   async function createCollection() {
     if (!name.trim()) {
@@ -202,6 +204,11 @@ export function CmsCollectionsHomePage() {
   }
 
   async function deleteCollection(collection: CmsCollection) {
+    const confirmed = await confirm({
+      title: `Delete "${collection.name}"?`,
+      description: "This permanently removes the collection, its fields, and every entry in it. This action cannot be undone.",
+    });
+    if (!confirmed) return;
     try {
       await api(`/api/cms/collections/${collection.id}`, { method: "DELETE" });
       setCollections((current) => current.filter((entry) => entry.id !== collection.id));
@@ -213,6 +220,7 @@ export function CmsCollectionsHomePage() {
 
   return (
     <div className="mx-auto max-w-[1100px] px-5 py-8 sm:px-8">
+      {confirmElement}
       <div className="mb-8 flex items-end justify-between">
         <div>
           <h1 className="text-[28px] font-semibold tracking-[-0.05em]">Content Collections</h1>
@@ -344,6 +352,7 @@ export function CmsEntriesPage() {
   const [fieldOptions, setFieldOptions] = useState("");
   const [fieldBusy, setFieldBusy] = useState(false);
   const [fieldError, setFieldError] = useState("");
+  const { confirm, element: confirmElement } = useConfirm();
 
   const load = useCallback(async () => {
     if (!collectionId) return;
@@ -411,6 +420,11 @@ export function CmsEntriesPage() {
   }
 
   async function removeField(field: CmsField) {
+    const confirmed = await confirm({
+      title: `Delete field "${field.name}"?`,
+      description: "The column disappears from this collection. Stored values are kept. This action cannot be undone.",
+    });
+    if (!confirmed) return;
     try {
       await api(`/api/cms/fields/${field.id}`, { method: "DELETE" });
       setFields((current) => current.filter((entry) => entry.id !== field.id));
@@ -432,6 +446,11 @@ export function CmsEntriesPage() {
   }
 
   async function deleteEntry(entry: CmsEntry) {
+    const confirmed = await confirm({
+      title: "Delete this entry?",
+      description: "This permanently removes the entry from the collection. This action cannot be undone.",
+    });
+    if (!confirmed) return;
     try {
       await api(`/api/cms/entries/${entry.id}`, { method: "DELETE" });
       setEntries((current) => current.filter((item) => item.id !== entry.id));
@@ -449,6 +468,7 @@ export function CmsEntriesPage() {
 
   return (
     <div className="mx-auto max-w-[1200px] px-5 py-8 sm:px-8">
+      {confirmElement}
       <div className="mb-6 flex items-end justify-between gap-4">
         <div className="min-w-0">
           <Link className="mb-1 flex items-center gap-1 text-xs text-[#755984] hover:text-[#493254]" to="/cms">

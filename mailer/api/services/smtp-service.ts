@@ -40,7 +40,11 @@ function appSmtpFromEnv(): { host: string; port: number; user: string; pass: str
   const port = Number(process.env.SMTP_PORT ?? 465);
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM ?? user;
+  // Fall back to the username only when it is itself a valid email; a bare
+  // service username (e.g. "resend") is not a sendable `from` address and
+  // gets rejected by providers with "550 Invalid from field".
+  const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const from = process.env.SMTP_FROM ?? (user && EMAIL_PATTERN.test(user) ? user : "");
   if (!host || !Number.isInteger(port) || port < 1 || port > 65535 || !user || !pass || !from) return null;
   return { host, port, user, pass, from };
 }

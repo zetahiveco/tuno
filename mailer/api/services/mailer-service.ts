@@ -1,5 +1,6 @@
 import { prisma } from "@/mailer/api/services/database";
 import { MailerSmtpError, resolveSmtp } from "@/mailer/api/services/smtp-service";
+import { unsubscribeToken, getFooterText } from "@/mailer/api/services/unsubscribe-service";
 import {
   parseTemplateBlocks,
   renderEmailHtml,
@@ -112,6 +113,7 @@ export async function sendCampaign(campaignId: string): Promise<SendCampaignResu
   const eventIdByEmail = new Map(sentEvents.map((event) => [event.email, event.id]));
   const appUrl = process.env.APP_URL ?? "http://localhost:5000";
   const clickUrlBase = `${appUrl}/api/public/mailer/click`;
+  const footerText = await getFooterText(campaign.userId);
 
   let sent = 0;
   let failed = 0;
@@ -128,6 +130,8 @@ export async function sendCampaign(campaignId: string): Promise<SendCampaignResu
       const html = renderEmailHtml({
         blocks,
         values,
+        footerText,
+        unsubscribeUrl: `${appUrl}/api/public/mailer/unsubscribe/${unsubscribeToken(recipient.id)}`,
         tracking: {
           clickUrlBase,
           openUrl: `${appUrl}/api/public/mailer/open/${eventId}.gif`,
@@ -181,7 +185,8 @@ export async function sendTestEmail(userId: string, templateId: string, to: stri
   const values = buildValues(null, to, payload);
   const blocks = parseTemplateBlocks(template.blocks);
   const subject = interpolateSubject(subjectOverride || template.subject || template.name, values);
-  const html = renderEmailHtml({ blocks, values });
+  const footerText = await getFooterText(userId);
+  const html = renderEmailHtml({ blocks, values, footerText });
   const error = await deliver(resolved.transport, resolved.from, to, subject, html, renderBlocksText(blocks, values));
   if (error) throw new MailerSendError(`Test email failed: ${error}`);
 }

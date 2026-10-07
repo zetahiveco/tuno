@@ -696,4 +696,31 @@ router.post("/smtp/test", async (request, response) => {
   }
 });
 
+/* --------------------------------- Settings -------------------------------- */
+
+router.get("/settings", async (request, response) => {
+  const settings = await prisma.settings.findUnique({
+    where: { userId: request.user!.id },
+    select: { footerText: true },
+  });
+  response.json({ footerText: settings?.footerText ?? "" });
+});
+
+router.put("/settings", async (request, response) => {
+  const parsed = z.object({
+    footerText: z.string().max(500).transform((value) => value.trim()),
+  }).safeParse(request.body ?? {});
+  if (!parsed.success) {
+    response.status(400).json({ error: "Invalid settings. The footer text must be at most 500 characters." });
+    return;
+  }
+  const settings = await prisma.settings.upsert({
+    where: { userId: request.user!.id },
+    create: { userId: request.user!.id, footerText: parsed.data.footerText },
+    update: { footerText: parsed.data.footerText },
+    select: { footerText: true },
+  });
+  response.json({ footerText: settings.footerText });
+});
+
 export { router as mailerRouter };

@@ -7,13 +7,11 @@ import {
 } from "../mailer/shared/template-blocks";
 import { test, expect } from "bun:test";
 
-test("default template renders HTML with interpolated button", () => {
+test("default template renders HTML with interpolated link", () => {
   const blocks = defaultTemplateBlocks();
   const html = renderEmailHtml({ blocks, values: { email: "j@x.com", name: "Sam" } });
   expect(html).toContain("<h1");
   expect(html).toContain("Hi Sam,");
-  expect(html).toContain("background:#7a4fa3");
-  expect(html).toContain('href="https://example.com"');
   expect(html).toContain('href="https://example.com"'); // link inside paragraph
   expect(html).not.toContain("{{ name }}");
   const variables = extractVariables(JSON.stringify(blocks));

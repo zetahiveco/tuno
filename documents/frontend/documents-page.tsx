@@ -25,6 +25,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { useConfirm } from "@/components/confirm-alert";
 import { AppPageFrame, AppShell, type AppNavPage } from "@/general/frontend/app-shell";
 import { api } from "@/lib/api-client";
 
@@ -90,6 +91,7 @@ function FolderShareDialog({
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const { confirm, element: confirmElement } = useConfirm();
 
   useEffect(() => {
     if (!open) return;
@@ -114,6 +116,7 @@ function FolderShareDialog({
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="sm:max-w-[420px]">
+        {confirmElement}
         <DialogHeader>
           <DialogTitle>Share "{folder.name}"</DialogTitle>
           <DialogDescription>Teammates you share with can browse, upload, and download.</DialogDescription>
@@ -228,6 +231,14 @@ function FolderShareDialog({
                     disabled={busy}
                     onClick={async () => {
                       setBusy(true);
+                      const confirmed = await confirm({
+                        title: `Remove ${person.name}'s access?`,
+                        description: "This person will no longer be able to open this folder.",
+                      });
+                      if (!confirmed) {
+                        setBusy(false);
+                        return;
+                      }
                       try {
                         await api(`/api/documents/folders/${folder.id}/shares/${person.id}`, { method: "DELETE" });
                         await refresh();
@@ -278,6 +289,7 @@ function DocumentsBrowser({ scope }: { scope: "mine" | "shared" }) {
   const [uploadProgress, setUploadProgress] = useState("");
   const [shareFolder, setShareFolder] = useState<FolderSummary | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const { confirm, element: confirmElement } = useConfirm();
 
   const parentId = folderId ?? null;
 
@@ -322,6 +334,11 @@ function DocumentsBrowser({ scope }: { scope: "mine" | "shared" }) {
   }
 
   async function removeFolder(folder: FolderSummary) {
+    const confirmed = await confirm({
+      title: `Delete "${folder.name}"?`,
+      description: "This permanently deletes the folder and everything inside it. This action cannot be undone.",
+    });
+    if (!confirmed) return;
     try {
       await api(`/api/documents/folders/${folder.id}`, { method: "DELETE" });
       setFolders((current) => (current ?? []).filter((entry) => entry.id !== folder.id));
@@ -331,6 +348,11 @@ function DocumentsBrowser({ scope }: { scope: "mine" | "shared" }) {
   }
 
   async function removeFile(file: FileSummary) {
+    const confirmed = await confirm({
+      title: `Delete "${file.name}"?`,
+      description: "This permanently deletes the file. This action cannot be undone.",
+    });
+    if (!confirmed) return;
     try {
       await api(`/api/documents/files/${file.id}`, { method: "DELETE" });
       setFiles((current) => current.filter((entry) => entry.id !== file.id));
@@ -414,6 +436,7 @@ function DocumentsBrowser({ scope }: { scope: "mine" | "shared" }) {
       description={scope === "shared" ? "Folders your teammates shared with you." : "Your files, organized your way."}
       title="Documents"
     >
+      {confirmElement}
       <div className="mb-5 flex items-center gap-1 text-xs">
         <button className={`font-medium ${parentId ? "text-[#716b76] hover:text-[#3e3543]" : "text-[#211d26]"}`} onClick={() => navigate(rootHref)} type="button">
           {scope === "shared" ? "Shared" : "My documents"}

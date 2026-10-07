@@ -15,26 +15,32 @@ function validateUuid(value: string): string | null {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) ? value : null;
 }
 
-const leadStatuses = ["NEW", "CONTACTED", "QUALIFIED", "PROPOSAL", "WON", "LOST"] as const;
-const taskStatuses = ["TODO", "IN_PROGRESS", "DONE"] as const;
 const fieldTypes = ["TEXT", "NUMBER", "DATE", "SELECT", "CHECKBOX"] as const;
-const fieldEntities = ["LEAD", "CONTACT", "TASK"] as const;
+const fieldEntities = ["ACCOUNT", "CONTACT", "TASK"] as const;
 
 type FieldType = (typeof fieldTypes)[number];
 
 const trimmed = (max: number) => z.string().max(max).transform((value) => value.trim());
 
-const leadCreateSchema = z.object({
+const STAGE_COLORS = ["#8c838f", "#3b63a8", "#b98a2f", "#4e8a68", "#b05f5f", "#755984", "#2f7d6d"] as const;
+const DEFAULT_STAGES = [
+  { name: "Lead", color: "#8c838f" },
+  { name: "Contacted", color: "#3b63a8" },
+  { name: "Deal", color: "#b98a2f" },
+  { name: "Closed", color: "#4e8a68" },
+  { name: "Lost", color: "#b05f5f" },
+] as const;
+
+const accountCreateSchema = z.object({
   name: z.string().min(1).max(MAX_TEXT_LENGTH).transform((value) => value.trim()),
-  company: trimmed(MAX_TEXT_LENGTH).optional(),
   email: z.string().max(200).optional(),
   phone: z.string().max(60).optional(),
   source: trimmed(MAX_TEXT_LENGTH).optional(),
-  status: z.enum(leadStatuses).optional(),
   value: z.number().min(0).optional(),
+  stageId: z.string().uuid().optional(),
 });
 
-const leadUpdateSchema = leadCreateSchema.partial().extend({
+const accountUpdateSchema = accountCreateSchema.partial().extend({
   name: trimmed(MAX_TEXT_LENGTH).optional(),
 });
 
@@ -42,21 +48,19 @@ const contactCreateSchema = z.object({
   name: z.string().min(1).max(MAX_TEXT_LENGTH).transform((value) => value.trim()),
   email: z.string().max(200).optional(),
   phone: z.string().max(60).optional(),
-  company: trimmed(MAX_TEXT_LENGTH).optional(),
   role: trimmed(MAX_TEXT_LENGTH).optional(),
-  leadId: z.string().uuid().nullish(),
+  accountId: z.string().uuid(),
 });
 
 const contactUpdateSchema = contactCreateSchema.partial().extend({
   name: trimmed(MAX_TEXT_LENGTH).optional(),
-  leadId: z.string().uuid().nullish(),
 });
 
 const taskCreateSchema = z.object({
   title: z.string().min(1).max(MAX_TEXT_LENGTH).transform((value) => value.trim()),
-  status: z.enum(taskStatuses).optional(),
+  status: z.enum(["TODO", "IN_PROGRESS", "DONE"]).optional(),
   dueDate: z.string().datetime().nullish(),
-  leadId: z.string().uuid().nullish(),
+  accountId: z.string().uuid().nullish(),
   contactId: z.string().uuid().nullish(),
 });
 
@@ -67,12 +71,23 @@ const taskUpdateSchema = taskCreateSchema.partial().extend({
 
 const noteCreateSchema = z.object({
   body: z.string().max(MAX_BODY_LENGTH).transform((body) => body.trim()).refine((body) => body.length > 0, "Note body is required."),
-  leadId: z.string().uuid().nullish(),
+  accountId: z.string().uuid().nullish(),
   contactId: z.string().uuid().nullish(),
 });
 
 const noteUpdateSchema = z.object({
   body: z.string().max(MAX_BODY_LENGTH).transform((body) => body.trim()).refine((body) => body.length > 0, "Note body is required."),
+});
+
+const stageCreateSchema = z.object({
+  name: z.string().min(1).max(MAX_TEXT_LENGTH).transform((value) => value.trim()),
+  color: z.string().max(32).optional(),
+});
+
+const stageUpdateSchema = z.object({
+  name: trimmed(MAX_TEXT_LENGTH),
+  color: z.string().max(32).optional(),
+  position: z.number().int().min(0).optional(),
 });
 
 const fieldCreateSchema = z.object({
@@ -169,77 +184,206 @@ function parseDate(value: string | null | undefined) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-/* ---------------------------------- Leads --------------------------------- */
+/* --------------------------------- Stages --------------------------------- */
 
-router.get("/leads", async (request, response) => {
-  const leads = await prisma.lead.findMany({
-    where: { createdById: request.user!.id },
-    orderBy: { updatedAt: "desc" },
+/** List the caller's pipeline stages, seeding the default set on first use. */
+router.get("/stages", async (request, response) => {
+  const userId = request.user!.id;
+  let stages = await prisma.pipelineStage.findMany({
+    where: { createdById: userId },
+    orderBy: { position: "asc" },
   });
-  const values = await loadValuesMap("LEAD", leads.map((lead) => lead.id));
-  response.json({ leads: attachValues(leads, values) });
+  if (stages.length === 0) {
+    await prisma.pipelineStage.createMany({
+      data: DEFAULT_STAGES.map((stage, index) => ({ ...stage, position: index, createdById: userId })),
+    });
+    stages = await prisma.pipelineStage.findMany({
+      where: { createdById: userId },
+      orderBy: { position: "asc" },
+    });
+  }
+  const counts = await prisma.account.groupBy({
+    by: ["stageId"],
+    where: { createdById: userId },
+    _count: { _all: true },
+  });
+  const countByStage = new Map(counts.map((entry) => [entry.stageId, entry._count._all]));
+  response.json({
+    stages: stages.map((stage) => ({ ...stage, accountCount: countByStage.get(stage.id) ?? 0 })),
+  });
 });
 
-router.post("/leads", async (request, response) => {
-  const parsed = leadCreateSchema.safeParse(request.body ?? {});
-  if (!parsed.success) {
-    response.status(400).json({ error: "A lead name is required." });
+router.post("/stages", async (request, response) => {
+  const parsed = stageCreateSchema.safeParse(request.body ?? {});
+  if (!parsed.success || !parsed.data.name) {
+    response.status(400).json({ error: "A stage name is required." });
     return;
   }
-  const lead = await prisma.lead.create({
+  const count = await prisma.pipelineStage.count({ where: { createdById: request.user!.id } });
+  const stage = await prisma.pipelineStage.create({
     data: {
       name: parsed.data.name,
-      company: parsed.data.company ?? "",
-      email: parsed.data.email ?? "",
-      phone: parsed.data.phone ?? "",
-      source: parsed.data.source ?? "",
-      status: parsed.data.status ?? "NEW",
-      value: parsed.data.value ?? 0,
+      color: parsed.data.color ?? STAGE_COLORS[count % STAGE_COLORS.length],
+      position: count,
       createdById: request.user!.id,
     },
   });
-  response.status(201).json({ lead: { ...lead, customValues: {} } });
+  response.status(201).json({ stage: { ...stage, accountCount: 0 } });
 });
 
-router.patch("/leads/:leadId", async (request, response) => {
-  const leadId = validateUuid(request.params.leadId);
-  if (!leadId) {
-    response.status(400).json({ error: "Invalid lead id." });
+router.patch("/stages/:stageId", async (request, response) => {
+  const stageId = validateUuid(request.params.stageId);
+  if (!stageId) {
+    response.status(400).json({ error: "Invalid stage id." });
     return;
   }
-  const parsed = leadUpdateSchema.safeParse(request.body);
+  const parsed = stageUpdateSchema.safeParse(request.body);
   if (!parsed.success || Object.keys(parsed.data).length === 0) {
-    response.status(400).json({ error: "Invalid lead data." });
+    response.status(400).json({ error: "Invalid stage data." });
     return;
   }
-  const existing = await prisma.lead.findFirst({
-    where: { id: leadId, createdById: request.user!.id },
+  const existing = await prisma.pipelineStage.findFirst({
+    where: { id: stageId, createdById: request.user!.id },
     select: { id: true },
   });
   if (!existing) {
-    response.status(404).json({ error: "Lead not found." });
+    response.status(404).json({ error: "Stage not found." });
     return;
   }
-  const { ...data } = parsed.data;
-  const lead = await prisma.lead.update({ where: { id: leadId }, data });
-  response.json({ lead });
+  const stage = await prisma.pipelineStage.update({ where: { id: stageId }, data: parsed.data });
+  response.json({ stage });
 });
 
-router.delete("/leads/:leadId", async (request, response) => {
-  const leadId = validateUuid(request.params.leadId);
-  if (!leadId) {
-    response.status(400).json({ error: "Invalid lead id." });
+router.delete("/stages/:stageId", async (request, response) => {
+  const stageId = validateUuid(request.params.stageId);
+  if (!stageId) {
+    response.status(400).json({ error: "Invalid stage id." });
     return;
   }
-  const existing = await prisma.lead.findFirst({
-    where: { id: leadId, createdById: request.user!.id },
+  const existing = await prisma.pipelineStage.findFirst({
+    where: { id: stageId, createdById: request.user!.id },
+    select: { id: true, _count: { select: { accounts: true } } },
+  });
+  if (!existing) {
+    response.status(404).json({ error: "Stage not found." });
+    return;
+  }
+  if (existing._count.accounts > 0) {
+    response.status(409).json({ error: "Move the accounts out of this stage before deleting it." });
+    return;
+  }
+  await prisma.pipelineStage.delete({ where: { id: stageId } });
+  response.status(204).end();
+});
+
+/* --------------------------------- Accounts -------------------------------- */
+
+router.get("/accounts", async (request, response) => {
+  const accounts = await prisma.account.findMany({
+    where: { createdById: request.user!.id },
+    include: { stage: { select: { id: true, name: true, color: true } } },
+    orderBy: { updatedAt: "desc" },
+  });
+  const values = await loadValuesMap("ACCOUNT", accounts.map((account) => account.id));
+  response.json({ accounts: attachValues(accounts, values) });
+});
+
+router.post("/accounts", async (request, response) => {
+  const parsed = accountCreateSchema.safeParse(request.body ?? {});
+  if (!parsed.success || !parsed.data.name) {
+    response.status(400).json({ error: "An account name is required." });
+    return;
+  }
+  const userId = request.user!.id;
+  let stageId = parsed.data.stageId;
+  if (stageId) {
+    const stage = await prisma.pipelineStage.findFirst({
+      where: { id: stageId, createdById: userId },
+      select: { id: true },
+    });
+    if (!stage) {
+      response.status(400).json({ error: "That stage does not exist." });
+      return;
+    }
+  } else {
+    const firstStage = await prisma.pipelineStage.findFirst({
+      where: { createdById: userId },
+      orderBy: { position: "asc" },
+      select: { id: true },
+    });
+    if (!firstStage) {
+      response.status(400).json({ error: "No pipeline stages exist yet." });
+      return;
+    }
+    stageId = firstStage.id;
+  }
+  const account = await prisma.account.create({
+    data: {
+      name: parsed.data.name,
+      email: parsed.data.email ?? "",
+      phone: parsed.data.phone ?? "",
+      source: parsed.data.source ?? "",
+      value: parsed.data.value ?? 0,
+      stageId,
+      createdById: userId,
+    },
+    include: { stage: { select: { id: true, name: true, color: true } } },
+  });
+  response.status(201).json({ account: { ...account, customValues: {} } });
+});
+
+router.patch("/accounts/:accountId", async (request, response) => {
+  const accountId = validateUuid(request.params.accountId);
+  if (!accountId) {
+    response.status(400).json({ error: "Invalid account id." });
+    return;
+  }
+  const parsed = accountUpdateSchema.safeParse(request.body);
+  if (!parsed.success || Object.keys(parsed.data).length === 0) {
+    response.status(400).json({ error: "Invalid account data." });
+    return;
+  }
+  const existing = await prisma.account.findFirst({
+    where: { id: accountId, createdById: request.user!.id },
     select: { id: true },
   });
   if (!existing) {
-    response.status(404).json({ error: "Lead not found." });
+    response.status(404).json({ error: "Account not found." });
     return;
   }
-  await prisma.lead.delete({ where: { id: leadId } });
+  if (parsed.data.stageId) {
+    const stage = await prisma.pipelineStage.findFirst({
+      where: { id: parsed.data.stageId, createdById: request.user!.id },
+      select: { id: true },
+    });
+    if (!stage) {
+      response.status(400).json({ error: "That stage does not exist." });
+      return;
+    }
+  }
+  const account = await prisma.account.update({
+    where: { id: accountId },
+    data: parsed.data,
+    include: { stage: { select: { id: true, name: true, color: true } } },
+  });
+  response.json({ account });
+});
+
+router.delete("/accounts/:accountId", async (request, response) => {
+  const accountId = validateUuid(request.params.accountId);
+  if (!accountId) {
+    response.status(400).json({ error: "Invalid account id." });
+    return;
+  }
+  const existing = await prisma.account.findFirst({
+    where: { id: accountId, createdById: request.user!.id },
+    select: { id: true },
+  });
+  if (!existing) {
+    response.status(404).json({ error: "Account not found." });
+    return;
+  }
+  await prisma.account.delete({ where: { id: accountId } });
   response.status(204).end();
 });
 
@@ -248,6 +392,7 @@ router.delete("/leads/:leadId", async (request, response) => {
 router.get("/contacts", async (request, response) => {
   const contacts = await prisma.contact.findMany({
     where: { createdById: request.user!.id },
+    include: { account: { select: { id: true, name: true } } },
     orderBy: { updatedAt: "desc" },
   });
   const values = await loadValuesMap("CONTACT", contacts.map((contact) => contact.id));
@@ -256,8 +401,16 @@ router.get("/contacts", async (request, response) => {
 
 router.post("/contacts", async (request, response) => {
   const parsed = contactCreateSchema.safeParse(request.body ?? {});
-  if (!parsed.success) {
-    response.status(400).json({ error: "A contact name is required." });
+  if (!parsed.success || !parsed.data.name) {
+    response.status(400).json({ error: "A contact name and account are required." });
+    return;
+  }
+  const account = await prisma.account.findFirst({
+    where: { id: parsed.data.accountId, createdById: request.user!.id },
+    select: { id: true },
+  });
+  if (!account) {
+    response.status(400).json({ error: "That account does not exist." });
     return;
   }
   const contact = await prisma.contact.create({
@@ -265,11 +418,11 @@ router.post("/contacts", async (request, response) => {
       name: parsed.data.name,
       email: parsed.data.email ?? "",
       phone: parsed.data.phone ?? "",
-      company: parsed.data.company ?? "",
       role: parsed.data.role ?? "",
-      leadId: parsed.data.leadId ?? null,
+      accountId: parsed.data.accountId,
       createdById: request.user!.id,
     },
+    include: { account: { select: { id: true, name: true } } },
   });
   response.status(201).json({ contact: { ...contact, customValues: {} } });
 });
@@ -293,7 +446,21 @@ router.patch("/contacts/:contactId", async (request, response) => {
     response.status(404).json({ error: "Contact not found." });
     return;
   }
-  const contact = await prisma.contact.update({ where: { id: contactId }, data: parsed.data });
+  if (parsed.data.accountId) {
+    const account = await prisma.account.findFirst({
+      where: { id: parsed.data.accountId, createdById: request.user!.id },
+      select: { id: true },
+    });
+    if (!account) {
+      response.status(400).json({ error: "That account does not exist." });
+      return;
+    }
+  }
+  const contact = await prisma.contact.update({
+    where: { id: contactId },
+    data: parsed.data,
+    include: { account: { select: { id: true, name: true } } },
+  });
   response.json({ contact });
 });
 
@@ -390,12 +557,12 @@ router.delete("/tasks/:taskId", async (request, response) => {
 /* ---------------------------------- Notes --------------------------------- */
 
 router.get("/notes", async (request, response) => {
-  const leadId = validateUuid(String(request.query.leadId ?? ""));
+  const accountId = validateUuid(String(request.query.accountId ?? ""));
   const contactId = validateUuid(String(request.query.contactId ?? ""));
   const notes = await prisma.crmNote.findMany({
     where: {
       createdById: request.user!.id,
-      ...(leadId ? { leadId } : {}),
+      ...(accountId ? { accountId } : {}),
       ...(contactId ? { contactId } : {}),
     },
     orderBy: { createdAt: "desc" },
@@ -412,7 +579,7 @@ router.post("/notes", async (request, response) => {
   const note = await prisma.crmNote.create({
     data: {
       body: parsed.data.body,
-      leadId: parsed.data.leadId ?? null,
+      accountId: parsed.data.accountId ?? null,
       contactId: parsed.data.contactId ?? null,
       createdById: request.user!.id,
     },
@@ -550,8 +717,8 @@ router.put("/values", async (request, response) => {
 
 async function findOwnedEntity(entityType: string, entityId: string, userId: string) {
   switch (entityType) {
-    case "LEAD":
-      return prisma.lead.findFirst({ where: { id: entityId, createdById: userId }, select: { id: true } });
+    case "ACCOUNT":
+      return prisma.account.findFirst({ where: { id: entityId, createdById: userId }, select: { id: true } });
     case "CONTACT":
       return prisma.contact.findFirst({ where: { id: entityId, createdById: userId }, select: { id: true } });
     case "TASK":

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "@/mailer/api/services/database";
+import { unsubscribeByToken } from "@/mailer/api/services/unsubscribe-service";
 
 // Public endpoints used by delivered emails: an invisible open-tracking pixel
 // and a click redirect. Both are keyed by the SENT event id embedded in the
@@ -53,6 +54,30 @@ router.get("/click/:eventId", async (request, response) => {
   }
   await recordOnce(eventId, "CLICKED", { url: target }).catch(() => undefined);
   response.redirect(302, target);
+});
+
+const UNSUBSCRIBE_PAGE_STYLE =
+  'margin:0;padding:48px 16px;background:#f1eef4;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;display:grid;place-items:center;min-height:100vh;';
+
+router.get("/unsubscribe/:token", async (request, response) => {
+  const token = typeof request.params.token === "string" ? request.params.token.slice(0, 200) : "";
+  const unsubscribed = token ? await unsubscribeByToken(token).catch(() => false) : false;
+
+  response.status(200).contentType("html").send(`<!doctype html>
+<html>
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Unsubscribe</title></head>
+  <body style="${UNSUBSCRIBE_PAGE_STYLE}">
+    <div style="max-width:420px;width:100%;background:#ffffff;border:1px solid #e8e4ee;border-radius:12px;padding:32px;text-align:center;color:#3a3440;">
+      <div style="font-size:28px;">${unsubscribed ? "✅" : "⚠️"}</div>
+      <h1 style="margin:12px 0 6px;font-size:18px;">${unsubscribed ? "You're unsubscribed" : "This link is no longer valid"}</h1>
+      <p style="margin:0;font-size:13px;line-height:1.6;color:#847b89;">${
+        unsubscribed
+          ? "You won't receive any further campaigns from this workspace. Sorry to see you go!"
+          : "The unsubscribe link is invalid or has already been used. If you keep receiving emails, contact the sender directly."
+      }</p>
+    </div>
+  </body>
+</html>`);
 });
 
 export { router as publicMailerRouter };

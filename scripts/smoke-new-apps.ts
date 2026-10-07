@@ -56,29 +56,42 @@ function check(label: string, condition: boolean, detail?: unknown) {
 
 /* ----------------------------------- CRM ----------------------------------- */
 
-let { payload: crm } = await call("POST", "/api/crm/leads", { name: "Acme Corp", company: "Acme", value: 5000, status: "CONTACTED" });
-check("CRM: create lead", crm?.lead?.id && crm.lead.status === "CONTACTED", crm);
+const { payload: stages } = await call("GET", "/api/crm/stages");
+check("CRM: default stages seeded", stages?.stages?.length === 5 && stages.stages[0]?.name === "Lead", stages);
 
-const { payload: field } = await call("POST", "/api/crm/fields", { name: "Region", type: "SELECT", options: ["EU", "US"], appliesTo: "LEAD" });
+const { payload: customStage } = await call("POST", "/api/crm/stages", { name: "Negotiation" });
+check("CRM: add custom stage", customStage?.stage?.id, customStage);
+
+let { payload: crm } = await call("POST", "/api/crm/accounts", { name: "Acme Corp", value: 5000, stageId: customStage.stage.id });
+check("CRM: create account in custom stage", crm?.account?.id && crm.account.stage?.name === "Negotiation", crm);
+
+const { payload: field } = await call("POST", "/api/crm/fields", { name: "Region", type: "SELECT", options: ["EU", "US"], appliesTo: "ACCOUNT" });
 check("CRM: create custom field", field?.field?.id, field);
 
-const { payload: valued } = await call("PUT", "/api/crm/values", { entityType: "LEAD", entityId: crm.lead.id, values: { [field.field.id]: "EU" } });
+const { payload: valued } = await call("PUT", "/api/crm/values", { entityType: "ACCOUNT", entityId: crm.account.id, values: { [field.field.id]: "EU" } });
 check("CRM: set custom value", valued?.customValues?.[field.field.id] === "EU", valued);
 
-const { payload: leads } = await call("GET", "/api/crm/leads");
-check("CRM: lead list carries custom values", leads?.leads?.[0]?.customValues?.[field.field.id] === "EU", leads);
+const { payload: accounts } = await call("GET", "/api/crm/accounts");
+check("CRM: account list carries custom values", accounts?.accounts?.[0]?.customValues?.[field.field.id] === "EU", accounts);
 
-let contact = await call("POST", "/api/crm/contacts", { name: "Jane Doe", leadId: crm.lead.id });
-check("CRM: create contact linked to lead", contact.payload?.contact?.leadId === crm.lead.id, contact);
+const noAccount = await call("POST", "/api/crm/contacts", { name: "Jane Doe" });
+check("CRM: contact requires an account", noAccount.status === 400, noAccount);
+
+let contact = await call("POST", "/api/crm/contacts", { name: "Jane Doe", accountId: crm.account.id });
+check("CRM: create contact linked to account", contact.payload?.contact?.accountId === crm.account.id, contact);
 
 let crmTask = await call("POST", "/api/crm/tasks", { title: "Send proposal", status: "TODO" });
 check("CRM: create task", crmTask.payload?.task?.id, crmTask);
 
-const crmNote = await call("POST", "/api/crm/notes", { body: "Intro call went well", leadId: crm.lead.id });
+const crmNote = await call("POST", "/api/crm/notes", { body: "Intro call went well", accountId: crm.account.id });
 check("CRM: create note", crmNote.payload?.note?.id, crmNote);
 
-const patched = await call("PATCH", `/api/crm/leads/${crm.lead.id}`, { status: "WON" });
-check("CRM: update lead status", patched.payload?.lead?.status === "WON", patched);
+const lostStage = stages.stages.find((stage) => stage.name === "Lost");
+const moved = await call("PATCH", `/api/crm/accounts/${crm.account.id}`, { stageId: lostStage.id });
+check("CRM: move account to another stage (kanban)", moved.payload?.account?.stageId === lostStage.id, moved);
+
+const stageDelete = await call("DELETE", `/api/crm/stages/${lostStage.id}`);
+check("CRM: cannot delete a stage holding accounts", stageDelete.status === 409, stageDelete);
 
 /* ---------------------------------- Tasks ----------------------------------- */
 
@@ -166,6 +179,7 @@ if (upload.status === 201) {
 
 /* --------------------------------- Cleanup ---------------------------------- */
 
+await call("DELETE", `/api/crm/accounts/${crm.account.id}`);
 await call("DELETE", `/api/tasks/boards/${board.payload.board.id}`);
 await call("DELETE", `/api/documents/folders/${folder.payload.folder.id}`);
 await generalPrisma.user.deleteMany({ where: { id: { in: [user.id, otherUser.id] } } });

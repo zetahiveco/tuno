@@ -20,10 +20,8 @@ import { tasksRouter } from "@/tasks/api/routes/task-routes";
 import { publicTasksRouter } from "@/tasks/api/routes/public-task-routes";
 import { documentsRouter } from "@/documents/api/routes/document-routes";
 import { publicDocumentsRouter } from "@/documents/api/routes/public-document-routes";
-import { websitesRouter } from "@/websites/api/routes/website-routes";
 import { cmsRouter } from "@/cms/api/routes/cms-routes";
 import { publicCmsRouter } from "@/cms/api/routes/public-cms-routes";
-import { downloadFileFromS3 } from "@/lib/file";
 
 const app = express();
 const port = Number(process.env.PORT ?? 5000);
@@ -39,7 +37,6 @@ app.use("/api/tasks", express.json({ limit: "1mb" }));
 app.use("/api/public/tasks", express.json({ limit: "1mb" }));
 app.use("/api/documents", express.json({ limit: "1mb" }));
 app.use("/api/public/documents", express.json({ limit: "1mb" }));
-app.use("/api/websites", express.json({ limit: "2mb" }));
 app.use("/api/cms", express.json({ limit: "2mb" }));
 app.use("/api/public/cms", express.json({ limit: "1mb" }));
 app.use(express.json({ limit: "32kb" }));
@@ -47,22 +44,6 @@ app.use(cookieParser());
 
 app.get("/api/health", (_request, response) => {
   response.json({ status: "ok" });
-});
-
-// Published websites (static HTML rendered from the builder, stored in S3).
-app.get("/p/:slug", async (request, response, next) => {
-  try {
-    const slug = String(request.params.slug ?? "");
-    if (!/^[a-z0-9-]{1,64}$/.test(slug)) {
-      response.status(404).send("Site not found.");
-      return;
-    }
-    const html = await downloadFileFromS3(`published/${slug}/index.html`);
-    response.type("html").send(html.toString("utf8"));
-  } catch {
-    response.status(404).send("Site not found.");
-  }
-  void next;
 });
 
 app.use("/api/auth", authRouter);
@@ -83,7 +64,6 @@ app.use("/api/tasks", tasksRouter);
 app.use("/api/public/tasks", publicTasksRouter);
 app.use("/api/documents", documentsRouter);
 app.use("/api/public/documents", publicDocumentsRouter);
-app.use("/api/websites", websitesRouter);
 app.use("/api/cms", cmsRouter);
 app.use("/api/public/cms", publicCmsRouter);
 

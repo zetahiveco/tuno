@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { useConfirm } from "@/components/confirm-alert";
 import { api } from "@/lib/api-client";
 
 type Teammate = { id: string; name: string; email: string };
@@ -42,6 +43,7 @@ export function ShareDialog({
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const { confirm, element: confirmElement } = useConfirm();
 
   useEffect(() => {
     if (!open) return;
@@ -119,6 +121,14 @@ export function ShareDialog({
 
   async function removePerson(userId: string) {
     setBusy(true);
+    const confirmed = await confirm({
+      title: "Remove this person's access?",
+      description: "They will no longer be able to see this page.",
+    });
+    if (!confirmed) {
+      setBusy(false);
+      return;
+    }
     try {
       await api(`/api/notes/pages/${page.id}/shares/${userId}`, { method: "DELETE" });
       await refreshShares();
@@ -136,6 +146,7 @@ export function ShareDialog({
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="sm:max-w-[420px]">
+        {confirmElement}
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="text-lg">{page.icon || "📄"}</span>

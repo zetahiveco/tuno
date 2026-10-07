@@ -5,7 +5,9 @@ import {
   FiCheckCircle,
   FiEye,
   FiExternalLink,
+  FiFileText,
   FiHelpCircle,
+  FiHome,
   FiLayers,
   FiLoader,
   FiMail,
@@ -18,18 +20,20 @@ import {
 } from "react-icons/fi";
 import { api } from "@/lib/api-client";
 import { AppPageFrame, AppShell } from "@/general/frontend/app-shell";
+import { useConfirm } from "@/components/confirm-alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 const mailerPages = [
-  { end: true, icon: FiMail, label: "Overview", to: "/mailer" },
+  { end: true, icon: FiHome, label: "Overview", to: "/mailer" },
   { icon: FiMail, label: "Campaigns", to: "/mailer/campaigns" },
   { icon: FiLayers, label: "Templates", to: "/mailer/templates" },
   { icon: FiUsers, label: "Audiences", to: "/mailer/audiences" },
@@ -130,6 +134,7 @@ export function MailerOverviewPage() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <SmtpCard onChanged={() => void loadAnalytics()} />
+        <FooterCard />
         <SmtpGuideCard />
       </div>
     </AppPageFrame>
@@ -164,6 +169,7 @@ function SmtpCard({ onChanged }: { onChanged: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const { confirm, element: confirmElement } = useConfirm();
 
   const loadStatus = useCallback(async () => {
     setError("");
@@ -181,7 +187,11 @@ function SmtpCard({ onChanged }: { onChanged: () => void }) {
   }, [loadStatus]);
 
   async function removeCustom() {
-    if (!window.confirm("Remove your SMTP server and fall back to the app's SMTP?")) return;
+    const confirmed = await confirm({
+      title: "Remove your SMTP server?",
+      description: "Campaigns will fall back to the app-wide SMTP server. This action cannot be undone.",
+    });
+    if (!confirmed) return;
     try {
       await api("/api/mailer/smtp", { method: "DELETE" });
       await loadStatus();
@@ -193,6 +203,7 @@ function SmtpCard({ onChanged }: { onChanged: () => void }) {
 
   return (
     <div className="border border-[#eeeaf1] bg-white p-5">
+      {confirmElement}
       <div className="flex items-center gap-2">
         <FiServer className="size-4 text-[#7a4fa3]" />
         <h2 className="text-sm font-semibold tracking-[-0.02em]">Sending email</h2>
@@ -242,6 +253,84 @@ function SmtpCard({ onChanged }: { onChanged: () => void }) {
           open={dialogOpen}
         />
       ) : null}
+    </div>
+  );
+}
+
+function FooterCard() {
+  const [footerText, setFooterText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api<{ footerText: string }>("/api/mailer/settings")
+      .then((result) => setFooterText(result.footerText))
+      .catch(() => setError("Could not load the footer text."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    setSaved(false);
+    setError("");
+    try {
+      const result = await api<{ footerText: string }>("/api/mailer/settings", {
+        body: JSON.stringify({ footerText }),
+        method: "PUT",
+      });
+      setFooterText(result.footerText);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save the footer text.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="border border-[#eeeaf1] bg-white p-5">
+      <div className="flex items-center gap-2">
+        <FiFileText className="size-4 text-[#7a4fa3]" />
+        <h2 className="text-sm font-semibold tracking-[-0.02em]">Email footer</h2>
+        {loading ? <FiLoader className="ml-auto size-3.5 animate-spin text-[#a49ba9]" /> : null}
+      </div>
+
+      {error ? <p className="mt-3 text-xs text-red-600">{error}</p> : null}
+
+      <p className="mt-3 text-xs leading-5 text-[#847b89]">
+        Shown at the bottom of every campaign. Variables like {"{{ email }}"} and {"{{ name }}"} work here. An
+        Unsubscribe link is added automatically for each recipient.
+      </p>
+
+      <Textarea
+        className="mt-3 min-h-[70px] border-[#e8e4ee] text-xs"
+        disabled={loading}
+        maxLength={500}
+        onChange={(event) => setFooterText(event.target.value)}
+        placeholder="You're receiving this email because you're part of this workspace's audience."
+        value={footerText}
+      />
+      <p className="mt-1 text-right text-[10px] text-[#a49ba9]">{footerText.length}/500</p>
+
+      <div className="mt-3 flex items-center justify-end gap-2">
+        {saved ? (
+          <span className="flex items-center gap-1 text-xs text-[#3d8a55]">
+            <FiCheckCircle className="size-3.5" /> Saved
+          </span>
+        ) : null}
+        <Button
+          className="h-8 bg-[#7a4fa3] px-3 hover:bg-[#6a4290]"
+          disabled={loading || saving}
+          onClick={() => void save()}
+          size="sm"
+        >
+          {saving ? <FiLoader className="size-3.5 animate-spin" /> : null} Save footer
+        </Button>
+      </div>
     </div>
   );
 }

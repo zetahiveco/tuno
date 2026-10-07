@@ -8,7 +8,7 @@
 // mailer/shared/template-blocks.ts, which runs both for the live preview and
 // at send time on the server.
 
-import { BlockNoteSchema } from "@blocknote/core";
+import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import { createReactBlockSpec } from "@blocknote/react";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -76,6 +76,11 @@ const SpacerBlock = createReactBlockSpec(
 
 export const emailSchema = BlockNoteSchema.create({
   blockSpecs: {
+    // `BlockNoteSchema.create` replaces the default block specs, so the
+    // defaults must be merged back in — otherwise standard blocks like
+    // "paragraph" and "heading" are missing and the editor crashes on
+    // any template that contains them.
+    ...defaultBlockSpecs,
     button: ButtonBlock() as any,
     spacer: SpacerBlock() as any,
   },

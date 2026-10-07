@@ -48,8 +48,6 @@
     "notes/**/*.tsx",
     "forms/**/*.ts",
     "forms/**/*.tsx",
-    "websites/**/*.ts",
-    "websites/**/*.tsx",
     "cms/**/*.ts",
     "cms/**/*.tsx",
     "scripts/**/*.ts"

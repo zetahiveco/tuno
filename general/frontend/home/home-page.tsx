@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FiArrowLeft, FiArrowRight, FiBriefcase, FiCalendar, FiCheck, FiCheckSquare, FiCopy, FiDatabase, FiFileText, FiFolder, FiGlobe, FiGrid, FiKey, FiMail, FiSettings, FiShield, FiTrash2, FiUsers, FiUser, FiUserPlus } from "react-icons/fi";
+import { FiArrowLeft, FiArrowRight, FiBriefcase, FiCalendar, FiCheck, FiCheckSquare, FiCopy, FiDatabase, FiFileText, FiFolder, FiGrid, FiKey, FiMail, FiSettings, FiShield, FiTrash2, FiUsers, FiUser, FiUserPlus } from "react-icons/fi";
 import { Link } from "react-router-dom";
 import { z } from "zod";
 import {
@@ -594,10 +594,9 @@ export function HomePage({ user, onLogout, onUserChange }: { user: User; onLogou
             <AppCard appPath="/notes" description="Capture thoughts and keep your team's knowledge close." icon={<FiFileText className="size-5" />} name="Notes" tint="bg-[#eef3f8] text-[#5e7e9e]" />
             <AppCard appPath="/forms" description="Build forms with skip logic and collect responses." icon={<FiCheckSquare className="size-5" />} name="Forms" tint="bg-[#eaf6ef] text-[#4e8a68]" />
             <AppCard appPath="/scheduler" description="Share booking links and let people schedule meetings with you." icon={<FiCalendar className="size-5" />} name="Scheduler" tint="bg-[#e8eefb] text-[#3b63a8]" />
-            <AppCard appPath="/crm" description="Track leads, contacts, tasks, and notes in one pipeline." icon={<FiBriefcase className="size-5" />} name="CRM" tint="bg-[#eaf6ef] text-[#4e8a68]" />
+            <AppCard appPath="/crm" description="Track accounts, contacts, tasks, and notes in one pipeline." icon={<FiBriefcase className="size-5" />} name="CRM" tint="bg-[#eaf6ef] text-[#4e8a68]" />
             <AppCard appPath="/tasks" description="Organize work on kanban boards with your team." icon={<FiCheckSquare className="size-5" />} name="Tasks" tint="bg-[#e8eefb] text-[#3b63a8]" />
             <AppCard appPath="/documents" description="Store files in folders and share them with anyone." icon={<FiFolder className="size-5" />} name="Documents" tint="bg-[#eef3f8] text-[#587497]" />
-            <AppCard appPath="/websites" description="Chat with AI to build and publish websites with a link." icon={<FiGlobe className="size-5" />} name="Websites" tint="bg-[#e8eefb] text-[#3b63a8]" />
             <AppCard appPath="/cms" description="Model content collections with a standalone REST API." icon={<FiDatabase className="size-5" />} name="CMS" tint="bg-[#f4ecfb] text-[#8957a5]" />
           </div>
           {user.role === "ADMIN" && <TeamPanel />}

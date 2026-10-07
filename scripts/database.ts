@@ -1,8 +1,8 @@
-type AppName = "general" | "mailer" | "notes" | "forms" | "scheduler" | "crm" | "tasks" | "documents" | "websites" | "cms";
+type AppName = "general" | "mailer" | "notes" | "forms" | "scheduler" | "crm" | "tasks" | "documents" | "cms";
 type Operation = "generate" | "push";
 type Command = Operation | "setup";
 
-const apps: AppName[] = ["general", "mailer", "notes", "forms", "scheduler", "crm", "tasks", "documents", "websites", "cms"];
+const apps: AppName[] = ["general", "mailer", "notes", "forms", "scheduler", "crm", "tasks", "documents", "cms"];
 const operation = Bun.argv[2] as Command | undefined;
 
 if (operation !== "generate" && operation !== "push" && operation !== "setup") {

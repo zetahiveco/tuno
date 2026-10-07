@@ -22,6 +22,7 @@ import {
   FiX,
 } from "react-icons/fi";
 import { api } from "@/lib/api-client";
+import { useConfirm } from "@/components/confirm-alert";
 import { AppPageFrame, AppShell } from "@/general/frontend/app-shell";
 import {
   AlertDialog,
@@ -984,6 +985,7 @@ function formatAnswer(blocks: FormBlock[], answers: SubmissionAnswers, block: Fo
 function SubmissionCard({ blocks, submission }: { blocks: FormBlock[]; submission: FormSubmissionRecord }) {
   const [opening, setOpening] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
+  const { confirm, element: confirmElement } = useConfirm();
   const answers = parseSubmissionAnswers(submission.answers);
   const entries = blocks
     .map((block) => ({ block, value: formatAnswer(blocks, answers, block) }))
@@ -1001,6 +1003,11 @@ function SubmissionCard({ blocks, submission }: { blocks: FormBlock[]; submissio
   }
 
   async function remove() {
+    const confirmed = await confirm({
+      title: "Delete this submission?",
+      description: "This permanently removes the response and any uploaded files. This action cannot be undone.",
+    });
+    if (!confirmed) return;
     setRemoving(true);
     try {
       await api<void>(`/api/forms/forms/${submission.formId}/submissions/${submission.id}`, { method: "DELETE" });
@@ -1015,6 +1022,7 @@ function SubmissionCard({ blocks, submission }: { blocks: FormBlock[]; submissio
 
   return (
     <div className="rounded-lg border border-[#eeeaf1] bg-white p-5">
+      {confirmElement}
       <div className="mb-3 flex items-center justify-between">
         <span className="text-xs text-[#a49ba9]">
           {formatDistanceToNow(new Date(submission.createdAt), { addSuffix: true })}

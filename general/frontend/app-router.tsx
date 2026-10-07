@@ -41,10 +41,10 @@ import {
 } from "@/scheduler/frontend/scheduler-page";
 import { PublicBookingPage } from "@/scheduler/frontend/public-booking-page";
 import {
+  CrmAccountsPage,
   CrmContactsPage,
   CrmFieldsPage,
   CrmLayout,
-  CrmLeadsPage,
   CrmNotesPage,
   CrmTasksPage,
 } from "@/crm/frontend/crm-page";
@@ -61,7 +61,6 @@ import {
   DocumentsSharedPage,
   PublicFolderPage,
 } from "@/documents/frontend/documents-page";
-import { WebsitesLayout, WebsitesHomePage, WebsiteBuilderPage } from "@/websites/frontend/websites-page";
 import {
   CmsCollectionApiPage,
   CmsCollectionsHomePage,
@@ -154,7 +153,7 @@ export function AppRouter() {
         <Route path="availability" element={<SchedulerAvailabilityPage />} />
       </Route>
       <Route path="/crm" element={user ? <CrmLayout /> : <Navigate replace to="/auth/login" />}>
-        <Route index element={<CrmLeadsPage />} />
+        <Route index element={<CrmAccountsPage />} />
         <Route path="contacts" element={<CrmContactsPage />} />
         <Route path="tasks" element={<CrmTasksPage />} />
         <Route path="notes" element={<CrmNotesPage />} />
@@ -169,10 +168,6 @@ export function AppRouter() {
         <Route index element={<DocumentsHomePage />} />
         <Route path="shared" element={<DocumentsSharedPage />} />
         <Route path="folders/:folderId" element={<DocumentsHomePage />} />
-      </Route>
-      <Route path="/websites" element={user ? <WebsitesLayout /> : <Navigate replace to="/auth/login" />}>
-        <Route index element={<WebsitesHomePage />} />
-        <Route path=":websiteId" element={<WebsiteBuilderPage />} />
       </Route>
       <Route path="/cms" element={user ? <CmsLayout /> : <Navigate replace to="/auth/login" />}>
         <Route index element={<CmsCollectionsHomePage />} />
