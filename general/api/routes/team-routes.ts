@@ -36,7 +36,7 @@ function getPublicOrigin(request: import("express").Request): string {
 router.get("/members", requireUser, requireAdmin, async (_request, response) => {
   const [members, pendingInvitations] = await Promise.all([
     prisma.user.findMany({
-      select: { id: true, email: true, role: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     }),
     prisma.invitation.findMany({

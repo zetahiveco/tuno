@@ -2,6 +2,8 @@ import cookieParser from "cookie-parser";
 import express from "express";
 import { join } from "node:path";
 import { authRouter } from "@/general/api/routes/auth-routes";
+import { keyRouter } from "@/general/api/routes/key-routes";
+import { publicRouter } from "@/general/api/routes/public-routes";
 import { settingsRouter } from "@/general/api/routes/settings-routes";
 import { teamRouter } from "@/general/api/routes/team-routes";
 import { userRouter } from "@/general/api/routes/user-routes";
@@ -22,6 +24,8 @@ app.use("/api/auth", authRouter);
 app.use("/api/user", userRouter);
 app.use("/api/team", teamRouter);
 app.use("/api/settings", settingsRouter);
+app.use("/api/keys", keyRouter);
+app.use("/api/public", publicRouter);
 
 app.use(express.static(join(import.meta.dir, "public")));
 app.use((request, response, next) => {

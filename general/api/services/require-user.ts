@@ -8,6 +8,7 @@ declare global {
   namespace Express {
     interface UserIdentity {
       id: string;
+      name: string;
       email: string;
       role: "ADMIN" | "MANAGER";
     }
@@ -44,6 +45,7 @@ export async function requireUser(
 
   request.user = {
     id: session.user.id,
+    name: session.user.name,
     email: session.user.email,
     role: session.user.role,
   };

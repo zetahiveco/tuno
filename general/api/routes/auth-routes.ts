@@ -120,7 +120,7 @@ router.post("/invitations/accept", async (request, response) => {
   }
 
   await createSession(user.id, response);
-  response.status(201).json({ user: { id: user.id, email: user.email, role: user.role } });
+  response.status(201).json({ user: { id: user.id, name: user.name, email: user.email, role: user.role } });
 });
 
 router.post("/signup", async (request, response) => {
@@ -166,7 +166,7 @@ router.post("/signup", async (request, response) => {
 
   await createSession(user.id, response);
   response.status(201).json({
-    user: { id: user.id, email: user.email, role: user.role },
+    user: { id: user.id, name: user.name, email: user.email, role: user.role },
   });
 });
 
@@ -187,7 +187,7 @@ router.post("/login", async (request, response) => {
   }
 
   await createSession(user.id, response);
-  response.json({ user: { id: user.id, email: user.email, role: user.role } });
+  response.json({ user: { id: user.id, name: user.name, email: user.email, role: user.role } });
 });
 
 router.post("/logout", async (request, response) => {
@@ -230,7 +230,7 @@ router.get("/me", async (request, response) => {
   }
 
   response.json({
-    user: { id: session.user.id, email: session.user.email, role: session.user.role },
+    user: { id: session.user.id, name: session.user.name, email: session.user.email, role: session.user.role },
   });
 });
 

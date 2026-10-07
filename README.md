@@ -7,6 +7,7 @@ A self-hostable, multi-app workspace built with **Bun**, **React**, and **Postgr
 - **Bootstrap-first onboarding** — the first account created through `/auth/signup` becomes the workspace `ADMIN`; registration closes automatically after that.
 - **Invitation-based team management** — admins invite members by email. Invitations are single-use, expire after 48 hours, and are delivered over SMTP.
 - **Secure sessions** — passwords hashed with Argon2id (via `Bun.password`), opaque session tokens stored as SHA-256 hashes, HttpOnly cookies with a `Secure` flag in production.
+- **API keys** — authenticated users can create named, optionally expiring API keys and use them to call public API endpoints from scripts and integrations.
 - **Modular app architecture** — General, Mailer, and Notes each own a separate Prisma schema and generated client, isolated in their own Postgres schema (`general`, `mailer`, `notes`).
 - **Shared settings** — key/value workspace settings exposed through a small REST API.
 - **Modern React client** — React 19, React Router, React Hook Form with Zod validation, Tailwind CSS 4, and a shared component library under `components/`.
@@ -141,10 +142,16 @@ All three apps connect to the **same Postgres database** from a single `DATABASE
 | `GET`  | `/api/auth/invitations/:token`  | Public      | Validate an invitation token         |
 | `POST` | `/api/auth/invitations/accept`  | Public      | Accept an invitation, create account |
 | `GET`  | `/api/user/me`                  | Session     | Current user profile                 |
+| `PATCH`| `/api/user/me`                  | Session     | Update the current user's name       |
 | `GET`  | `/api/team/members`             | Admin       | List workspace members               |
 | `POST` | `/api/team/invitations`         | Admin       | Invite a new member by email         |
 | `GET`  | `/api/settings`                 | Session     | Read workspace settings              |
 | `PUT`  | `/api/settings`                 | Session     | Update workspace settings            |
+| `GET`  | `/api/keys`                     | Session     | List your API keys                   |
+| `POST` | `/api/keys`                     | Session     | Create an API key                    |
+| `DELETE`| `/api/keys/:key`               | Session     | Revoke one of your API keys          |
+| `GET`  | `/api/public/me`                | API key     | Info about the calling key and owner |
+| `GET`  | `/api/public/workspace`         | API key     | Read-only workspace snapshot         |
 
 \* Only available while the workspace has no users (bootstrap state).
 
@@ -155,6 +162,14 @@ All three apps connect to the **same Postgres database** from a single `DATABASE
 - Sessions expire and are cleaned up by `expiresAt`; signing out deletes the session row.
 - Set `NODE_ENV=production` behind HTTPS to enable the cookie's `Secure` flag.
 - Invitations are single-use, expire after 48 hours, and their tokens are also stored hashed.
+
+### API keys
+
+API keys let scripts and integrations call the public API endpoints (`/api/public/*`) without a browser session:
+
+1. Create a key while signed in: `POST /api/keys` with `{"name": "My integration", "expiresAt": "2027-01-01T00:00:00.000Z"}` (expiry optional).
+2. Pass the key on every request via the `Authorization: Bearer <key>` header or the `X-API-Key: <key>` header.
+3. Revoke keys at any time with `DELETE /api/keys/:key`. Expired or revoked keys are rejected immediately.
 
 ## Roadmap
 
