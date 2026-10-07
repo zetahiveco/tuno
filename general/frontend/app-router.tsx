@@ -6,19 +6,69 @@ import { api, ApiRequestError, type User } from "@/lib/api-client";
 import { LoginPage, SignupPage } from "@/general/frontend/auth/auth-page";
 import { HomePage } from "@/general/frontend/home/home-page";
 import {
-  MailerAudiencesPage,
-  MailerCampaignsPage,
   MailerLayout,
   MailerOverviewPage,
-  MailerTemplatesPage,
 } from "@/mailer/frontend/mailer-page";
 import {
-  NotesAllPage,
-  NotesFavoritesPage,
+  MailerAudiencesPage,
+} from "@/mailer/frontend/audiences-page";
+import {
+  TemplateEditorPage,
+  TemplatesHomePage,
+} from "@/mailer/frontend/templates-page";
+import {
+  CampaignDetailPage,
+  MailerCampaignsPage,
+} from "@/mailer/frontend/campaigns-page";
+import {
+  NotesHomePage,
   NotesLayout,
-  NotesRecentPage,
-  NotesSharedPage,
+  NotesPageEditor,
 } from "@/notes/frontend/notes-page";
+import { PublicNotePage } from "@/notes/frontend/public-note-page";
+import {
+  FormBuilderPage,
+  FormsHomePage,
+  FormsLayout,
+  FormSubmissionsPage,
+} from "@/forms/frontend/forms-page";
+import { PublicFormPage } from "@/forms/frontend/public-form-page";
+import {
+  SchedulerAvailabilityPage,
+  SchedulerBookingsPage,
+  SchedulerEventTypesPage,
+  SchedulerLayout,
+} from "@/scheduler/frontend/scheduler-page";
+import { PublicBookingPage } from "@/scheduler/frontend/public-booking-page";
+import {
+  CrmContactsPage,
+  CrmFieldsPage,
+  CrmLayout,
+  CrmLeadsPage,
+  CrmNotesPage,
+  CrmTasksPage,
+} from "@/crm/frontend/crm-page";
+import {
+  BoardPage,
+  PublicBoardPage,
+  TasksBoardsPage,
+  TasksLayout,
+  TasksPlannerPage,
+} from "@/tasks/frontend/tasks-page";
+import {
+  DocumentsHomePage,
+  DocumentsLayout,
+  DocumentsSharedPage,
+  PublicFolderPage,
+} from "@/documents/frontend/documents-page";
+import { WebsitesLayout, WebsitesHomePage, WebsiteBuilderPage } from "@/websites/frontend/websites-page";
+import {
+  CmsCollectionApiPage,
+  CmsCollectionsHomePage,
+  CmsEntriesPage,
+  CmsEntryEditorPage,
+  CmsLayout,
+} from "@/cms/frontend/cms-page";
 
 export function AppRouter() {
   const [user, setUser] = useState<User | null>(null);
@@ -84,15 +134,57 @@ export function AppRouter() {
       <Route path="/mailer" element={user ? <MailerLayout /> : <Navigate replace to="/auth/login" />}>
         <Route index element={<MailerOverviewPage />} />
         <Route path="campaigns" element={<MailerCampaignsPage />} />
-        <Route path="templates" element={<MailerTemplatesPage />} />
+        <Route path="campaigns/:campaignId" element={<CampaignDetailPage />} />
+        <Route path="templates" element={<TemplatesHomePage />} />
+        <Route path="templates/:templateId" element={<TemplateEditorPage />} />
         <Route path="audiences" element={<MailerAudiencesPage />} />
       </Route>
       <Route path="/notes" element={user ? <NotesLayout /> : <Navigate replace to="/auth/login" />}>
-        <Route index element={<NotesAllPage />} />
-        <Route path="recent" element={<NotesRecentPage />} />
-        <Route path="favorites" element={<NotesFavoritesPage />} />
-        <Route path="shared" element={<NotesSharedPage />} />
+        <Route index element={<NotesHomePage />} />
+        <Route path=":pageId" element={<NotesPageEditor />} />
       </Route>
+      <Route path="/forms" element={user ? <FormsLayout /> : <Navigate replace to="/auth/login" />}>
+        <Route index element={<FormsHomePage />} />
+        <Route path=":formId" element={<FormBuilderPage />} />
+        <Route path=":formId/submissions" element={<FormSubmissionsPage />} />
+      </Route>
+      <Route path="/scheduler" element={user ? <SchedulerLayout /> : <Navigate replace to="/auth/login" />}>
+        <Route index element={<SchedulerEventTypesPage />} />
+        <Route path="bookings" element={<SchedulerBookingsPage />} />
+        <Route path="availability" element={<SchedulerAvailabilityPage />} />
+      </Route>
+      <Route path="/crm" element={user ? <CrmLayout /> : <Navigate replace to="/auth/login" />}>
+        <Route index element={<CrmLeadsPage />} />
+        <Route path="contacts" element={<CrmContactsPage />} />
+        <Route path="tasks" element={<CrmTasksPage />} />
+        <Route path="notes" element={<CrmNotesPage />} />
+        <Route path="fields" element={<CrmFieldsPage />} />
+      </Route>
+      <Route path="/tasks" element={user ? <TasksLayout /> : <Navigate replace to="/auth/login" />}>
+        <Route index element={<TasksBoardsPage />} />
+        <Route path="boards/:boardId" element={<BoardPage />} />
+        <Route path="planner" element={<TasksPlannerPage />} />
+      </Route>
+      <Route path="/documents" element={user ? <DocumentsLayout /> : <Navigate replace to="/auth/login" />}>
+        <Route index element={<DocumentsHomePage />} />
+        <Route path="shared" element={<DocumentsSharedPage />} />
+        <Route path="folders/:folderId" element={<DocumentsHomePage />} />
+      </Route>
+      <Route path="/websites" element={user ? <WebsitesLayout /> : <Navigate replace to="/auth/login" />}>
+        <Route index element={<WebsitesHomePage />} />
+        <Route path=":websiteId" element={<WebsiteBuilderPage />} />
+      </Route>
+      <Route path="/cms" element={user ? <CmsLayout /> : <Navigate replace to="/auth/login" />}>
+        <Route index element={<CmsCollectionsHomePage />} />
+        <Route path=":collectionId" element={<CmsEntriesPage />} />
+        <Route path=":collectionId/api" element={<CmsCollectionApiPage />} />
+        <Route path=":collectionId/entries/:entryId" element={<CmsEntryEditorPage />} />
+      </Route>
+      <Route path="/s/:slug" element={<PublicBookingPage />} />
+      <Route path="/f/:slug" element={<PublicFormPage />} />
+      <Route path="/share/:slug" element={<PublicNotePage />} />
+      <Route path="/t/:slug" element={<PublicBoardPage />} />
+      <Route path="/d/:slug" element={<PublicFolderPage />} />
       <Route path="*" element={<Navigate replace to={user ? "/home" : registrationOpen ? "/auth/signup" : "/auth/login"} />} />
     </Routes>
   );

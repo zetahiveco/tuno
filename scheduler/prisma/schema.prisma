@@ -1,0 +1,76 @@
+generator client {
+  provider   = "prisma-client"
+  output     = "../generated/client"
+  engineType = "client"
+  runtime    = "bun"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["scheduler"]
+}
+
+enum BookingStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+
+  @@schema("scheduler")
+}
+
+model EventType {
+  id              String  @id @default(uuid())
+  title           String  @default("")
+  // Unique, used in public booking links: /s/:slug
+  slug            String  @unique
+  description     String  @default("")
+  durationMinutes Int     @default(30)
+  // Free-form location hint shown to guests (e.g. "Google Meet", "Phone call").
+  location        String  @default("")
+  color           String  @default("#292927")
+  active          Boolean @default(true)
+  userId          String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  bookings        Booking[]
+
+  @@index([userId])
+  @@index([updatedAt])
+  @@schema("scheduler")
+}
+
+// Weekly recurring availability for a user, stored as minutes since midnight UTC.
+model Availability {
+  id          String @id @default(uuid())
+  userId      String
+  // 0 = Sunday … 6 = Saturday.
+  weekday     Int
+  startMinute Int
+  endMinute   Int
+
+  @@unique([userId, weekday, startMinute, endMinute])
+  @@index([userId])
+  @@schema("scheduler")
+}
+
+model Booking {
+  id            String        @id @default(uuid())
+  eventTypeId   String
+  userId        String
+  // Exact start moment of the meeting. The duration lives on the event type.
+  start         DateTime
+  guestName     String
+  guestEmail    String
+  guestTimezone String        @default("")
+  notes         String        @default("")
+  status        BookingStatus @default(PENDING)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  eventType     EventType     @relation(fields: [eventTypeId], references: [id], onDelete: Cascade)
+
+  @@index([userId, start])
+  @@index([eventTypeId, start])
+  @@index([status])
+  @@schema("scheduler")
+}

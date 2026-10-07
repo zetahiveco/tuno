@@ -10,9 +10,108 @@ datasource db {
   schemas  = ["mailer"]
 }
 
-model MailerRecord {
+enum CampaignStatus {
+  DRAFT
+  SENDING
+  SENT
+  FAILED
+
+  @@schema("mailer")
+}
+
+enum EventType {
+  SENT
+  OPENED
+  CLICKED
+  FAILED
+
+  @@schema("mailer")
+}
+
+// An audience contact. `props` holds free-form JSON custom properties that
+// templates can reference with {{ key }} (in addition to email/name).
+model Contact {
+  id         String   @id @default(uuid())
+  userId     String
+  email      String
+  name       String   @default("")
+  props      String   @default("{}")
+  subscribed Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, email])
+  @@index([userId, subscribed])
+  @@schema("mailer")
+}
+
+// A reusable email template. Content is a JSON array of markdown blocks
+// rendered to email-safe HTML at send time.
+model Template {
   id        String   @id @default(uuid())
+  userId    String
+  name      String   @default("")
+  subject   String   @default("")
+  blocks    String   @default("[]")
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@schema("mailer")
+}
+
+// A send. Created as DRAFT, switched to SENT after the fan-out completes.
+// `payload` holds custom JSON merged over each contact's properties.
+model Campaign {
+  id             String         @id @default(uuid())
+  userId         String
+  name           String         @default("")
+  subject        String         @default("")
+  templateId     String?
+  status         CampaignStatus @default(DRAFT)
+  payload        String         @default("{}")
+  recipientCount Int            @default(0)
+  sentAt         DateTime?
+  createdAt      DateTime       @default(now())
+  events         EmailEvent[]
+
+  @@index([userId])
+  @@index([createdAt])
+  @@schema("mailer")
+}
+
+// One row per delivery/engagement event, powering the analytics charts.
+model EmailEvent {
+  id         String    @id @default(uuid())
+  campaignId String
+  campaign   Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  email      String
+  type       EventType
+  // For OPENED/CLICKED events, the id of the SENT event that produced them.
+  sourceId   String?
+  meta       String    @default("{}")
+  createdAt  DateTime  @default(now())
+
+  @@index([campaignId, type])
+  @@index([sourceId])
+  @@index([createdAt])
+  @@schema("mailer")
+}
+
+// Per-user SMTP credentials. When absent the app-wide SMTP_* env vars are used.
+model SmtpConfig {
+  id         String   @id @default(uuid())
+  userId     String   @unique
+  host       String
+  port       Int
+  secure     Boolean  @default(true)
+  username   String
+  // AES-256-GCM encrypted (iv:tag:ciphertext hex).
+  password   String
+  fromName   String   @default("")
+  fromEmail  String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@schema("mailer")
 }

@@ -10,9 +10,33 @@ datasource db {
   schemas  = ["notes"]
 }
 
-model NoteRecord {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
+model NotePage {
+  id          String   @id @default(uuid())
+  title       String   @default("")
+  icon        String   @default("📄")
+  content     String   @default("[]")
+  favorite    Boolean  @default(false)
+  createdById String
+  sharedAll   Boolean  @default(false)
+  publicSlug  String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  shares      NotePageShare[]
 
+  @@index([createdById])
+  @@index([updatedAt])
+  @@index([sharedAll])
+  @@schema("notes")
+}
+
+model NotePageShare {
+  id        String   @id @default(uuid())
+  pageId    String
+  userId    String
+  createdAt DateTime @default(now())
+  page      NotePage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([pageId, userId])
+  @@index([userId])
   @@schema("notes")
 }

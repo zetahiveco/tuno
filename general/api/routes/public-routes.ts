@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/general/api/services/database";
 import { requireApiKey } from "@/general/api/services/require-api-key";
 import { requireUser } from "@/general/api/services/require-user";
+import { prisma as notesPrisma } from "@/notes/api/services/database";
 
 const router = Router();
 const defaults = {
@@ -32,6 +33,25 @@ router.get("/workspace", requireApiKey, async (_request, response) => {
       memberCount,
     },
   });
+});
+
+// Read a publicly shared notes page by its slug. No auth — the link is the key.
+router.get("/notes/:slug", async (request, response) => {
+  const slug = request.params.slug;
+  if (!/^[A-Za-z0-9_-]{6,32}$/.test(slug)) {
+    response.status(400).json({ error: "Invalid public link." });
+    return;
+  }
+
+  const page = await notesPrisma.notePage.findFirst({
+    where: { publicSlug: slug },
+    select: { title: true, icon: true, content: true, updatedAt: true },
+  });
+  if (!page) {
+    response.status(404).json({ error: "This page is not shared publicly." });
+    return;
+  }
+  response.json({ page });
 });
 
 export { router as publicRouter };

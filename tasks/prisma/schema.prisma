@@ -1,0 +1,81 @@
+generator client {
+  provider   = "prisma-client"
+  output     = "../generated/client"
+  engineType = "client"
+  runtime    = "bun"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["tasks"]
+}
+
+model Board {
+  id          String   @id @default(uuid())
+  name        String
+  color       String   @default("#755984")
+  createdById String
+  sharedAll   Boolean  @default(false)
+  publicSlug  String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  columns  BoardColumn[]
+  cards    Card[]
+  shares   BoardShare[]
+
+  @@index([createdById])
+  @@index([updatedAt])
+  @@index([sharedAll])
+  @@schema("tasks")
+}
+
+model BoardShare {
+  id      String @id @default(uuid())
+  boardId String
+  userId  String
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+  @@index([userId])
+  @@schema("tasks")
+}
+
+model BoardColumn {
+  id      String @id @default(uuid())
+  boardId String
+  name    String
+  position Int
+
+  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards Card[]
+
+  @@index([boardId])
+  @@schema("tasks")
+}
+
+model Card {
+  id         String    @id @default(uuid())
+  boardId    String
+  columnId   String
+  parentId   String?
+  title      String
+  description String   @default("")
+  assigneeId String?
+  dueDate    DateTime?
+  position   Int       @default(0)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  board    Board        @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  column   BoardColumn  @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  parent   Card?        @relation("CardSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks Card[]       @relation("CardSubtasks")
+
+  @@index([boardId])
+  @@index([columnId])
+  @@index([parentId])
+  @@index([dueDate])
+  @@schema("tasks")
+}

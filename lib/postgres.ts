@@ -6,7 +6,7 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is not set.");
 }
 
-export type AppSchema = "general" | "mailer" | "notes";
+export type AppSchema = "general" | "mailer" | "notes" | "forms" | "scheduler" | "crm" | "tasks" | "documents" | "websites" | "cms";
 
 export function createPostgresAdapter(schema: AppSchema) {
   return new PrismaPg(

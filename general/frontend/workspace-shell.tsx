@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FiArrowLeft, FiCommand, FiFileText, FiGrid, FiLogOut, FiMail, FiShield, FiZap } from "react-icons/fi";
+import { FiArrowLeft, FiBriefcase, FiCalendar, FiCheckSquare, FiColumns, FiCommand, FiDatabase, FiFileText, FiFolder, FiGlobe, FiGrid, FiLogOut, FiMail, FiShield, FiZap } from "react-icons/fi";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -33,6 +33,27 @@ function Sidebar({ user, onLogout }: { user: User; onLogout: () => void }) {
         </NavLink>
         <NavLink className={({ isActive }) => `flex h-10 items-center gap-3 px-3 text-[13px] font-medium transition ${isActive ? "bg-[#f3eef7] text-[#4f3262]" : "text-[#716b76] hover:bg-[#f7f5f8]"}`} to="/notes">
           <FiFileText className="size-[17px]" /> Notes
+        </NavLink>
+        <NavLink className={({ isActive }) => `flex h-10 items-center gap-3 px-3 text-[13px] font-medium transition ${isActive ? "bg-[#f3eef7] text-[#4f3262]" : "text-[#716b76] hover:bg-[#f7f5f8]"}`} to="/forms">
+          <FiCheckSquare className="size-[17px]" /> Forms
+        </NavLink>
+        <NavLink className={({ isActive }) => `flex h-10 items-center gap-3 px-3 text-[13px] font-medium transition ${isActive ? "bg-[#f3eef7] text-[#4f3262]" : "text-[#716b76] hover:bg-[#f7f5f8]"}`} to="/scheduler">
+          <FiCalendar className="size-[17px]" /> Scheduler
+        </NavLink>
+        <NavLink className={({ isActive }) => `flex h-10 items-center gap-3 px-3 text-[13px] font-medium transition ${isActive ? "bg-[#f3eef7] text-[#4f3262]" : "text-[#716b76] hover:bg-[#f7f5f8]"}`} to="/crm">
+          <FiBriefcase className="size-[17px]" /> CRM
+        </NavLink>
+        <NavLink className={({ isActive }) => `flex h-10 items-center gap-3 px-3 text-[13px] font-medium transition ${isActive ? "bg-[#f3eef7] text-[#4f3262]" : "text-[#716b76] hover:bg-[#f7f5f8]"}`} to="/tasks">
+          <FiColumns className="size-[17px]" /> Tasks
+        </NavLink>
+        <NavLink className={({ isActive }) => `flex h-10 items-center gap-3 px-3 text-[13px] font-medium transition ${isActive ? "bg-[#f3eef7] text-[#4f3262]" : "text-[#716b76] hover:bg-[#f7f5f8]"}`} to="/documents">
+          <FiFolder className="size-[17px]" /> Documents
+        </NavLink>
+        <NavLink className={({ isActive }) => `flex h-10 items-center gap-3 px-3 text-[13px] font-medium transition ${isActive ? "bg-[#f3eef7] text-[#4f3262]" : "text-[#716b76] hover:bg-[#f7f5f8]"}`} to="/websites">
+          <FiGlobe className="size-[17px]" /> Websites
+        </NavLink>
+        <NavLink className={({ isActive }) => `flex h-10 items-center gap-3 px-3 text-[13px] font-medium transition ${isActive ? "bg-[#f3eef7] text-[#4f3262]" : "text-[#716b76] hover:bg-[#f7f5f8]"}`} to="/cms">
+          <FiDatabase className="size-[17px]" /> CMS
         </NavLink>
       </nav>
       <div className="mt-auto bg-[#f8f5fa] p-4">

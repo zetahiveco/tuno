@@ -1,0 +1,62 @@
+generator client {
+  provider   = "prisma-client"
+  output     = "../generated/client"
+  engineType = "client"
+  runtime    = "bun"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["documents"]
+}
+
+model Folder {
+  id          String   @id @default(uuid())
+  name        String
+  parentId    String?
+  createdById String
+  sharedAll   Boolean  @default(false)
+  publicSlug  String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent  Folder?     @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  subfolders Folder[] @relation("FolderTree")
+  files   DocFile[]
+  shares  FolderShare[]
+
+  @@index([createdById])
+  @@index([parentId])
+  @@index([sharedAll])
+  @@schema("documents")
+}
+
+model FolderShare {
+  id       String @id @default(uuid())
+  folderId String
+  userId   String
+
+  folder Folder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@unique([folderId, userId])
+  @@index([userId])
+  @@schema("documents")
+}
+
+model DocFile {
+  id          String   @id @default(uuid())
+  folderId    String?
+  name        String
+  key         String   @unique
+  size        Int      @default(0)
+  mimeType    String   @default("application/octet-stream")
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  folder Folder? @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  @@index([folderId])
+  @@index([createdById])
+  @@schema("documents")
+}

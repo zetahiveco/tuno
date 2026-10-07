@@ -1,8 +1,6 @@
 # dependencies (bun install)
 node_modules
-general/generated
-mailer/generated
-notes/generated
+*/generated
 public/assets
 
 # output

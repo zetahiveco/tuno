@@ -1,0 +1,162 @@
+generator client {
+  provider   = "prisma-client"
+  output     = "../generated/client"
+  engineType = "client"
+  runtime    = "bun"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["crm"]
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  WON
+  LOST
+
+  @@schema("crm")
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+
+  @@schema("crm")
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  SELECT
+  CHECKBOX
+
+  @@schema("crm")
+}
+
+enum CustomFieldEntity {
+  LEAD
+  CONTACT
+  TASK
+
+  @@schema("crm")
+}
+
+model Lead {
+  id          String     @id @default(uuid())
+  name        String
+  company     String     @default("")
+  email       String     @default("")
+  phone       String     @default("")
+  source      String     @default("")
+  status      LeadStatus @default(NEW)
+  value       Float      @default(0)
+  createdById String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  tasks    CrmTask[]
+  notes    CrmNote[]
+  contacts Contact[]
+
+  @@index([createdById])
+  @@index([status])
+  @@index([updatedAt])
+  @@schema("crm")
+}
+
+model Contact {
+  id          String   @id @default(uuid())
+  name        String
+  email       String   @default("")
+  phone       String   @default("")
+  company     String   @default("")
+  role        String   @default("")
+  leadId      String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lead   Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  tasks  CrmTask[]
+  notes  CrmNote[]
+
+  @@index([createdById])
+  @@index([leadId])
+  @@index([updatedAt])
+  @@schema("crm")
+}
+
+model CrmTask {
+  id          String     @id @default(uuid())
+  title       String
+  status      TaskStatus @default(TODO)
+  dueDate     DateTime?
+  leadId      String?
+  contactId   String?
+  createdById String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  lead    Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([createdById])
+  @@index([dueDate])
+  @@index([status])
+  @@index([leadId])
+  @@index([contactId])
+  @@schema("crm")
+}
+
+model CrmNote {
+  id          String   @id @default(uuid())
+  body        String   @default("")
+  leadId      String?
+  contactId   String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lead    Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([createdById])
+  @@index([leadId])
+  @@index([contactId])
+  @@schema("crm")
+}
+
+model CustomField {
+  id          String            @id @default(uuid())
+  name        String
+  type        CustomFieldType   @default(TEXT)
+  options     String            @default("[]")
+  appliesTo   CustomFieldEntity
+  createdById String
+  createdAt   DateTime          @default(now())
+
+  values CustomFieldValue[]
+
+  @@index([appliesTo])
+  @@schema("crm")
+}
+
+model CustomFieldValue {
+  id         String   @id @default(uuid())
+  fieldId    String
+  entityType String
+  entityId   String
+  value      String   @default("")
+
+  field CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([fieldId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@schema("crm")
+}

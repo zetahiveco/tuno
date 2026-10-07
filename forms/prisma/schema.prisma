@@ -1,0 +1,50 @@
+generator client {
+  provider   = "prisma-client"
+  output     = "../generated/client"
+  engineType = "client"
+  runtime    = "bun"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["forms"]
+}
+
+enum FormStatus {
+  DRAFT
+  PUBLISHED
+
+  @@schema("forms")
+}
+
+model Form {
+  id          String     @id @default(uuid())
+  title       String     @default("")
+  description String     @default("")
+  icon        String     @default("🧾")
+  // JSON array of form blocks (questions, text, file uploads, skip logic).
+  blocks      String     @default("[]")
+  status      FormStatus @default(DRAFT)
+  publicSlug  String?    @unique
+  createdById String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  submissions FormSubmission[]
+
+  @@index([createdById])
+  @@index([status])
+  @@index([updatedAt])
+  @@schema("forms")
+}
+
+model FormSubmission {
+  id        String   @id @default(uuid())
+  formId    String
+  // JSON object: blockId -> answer (text, option id, option ids, or file name).
+  answers   String   @default("{}")
+  createdAt DateTime @default(now())
+  form      Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId])
+  @@schema("forms")
+}
