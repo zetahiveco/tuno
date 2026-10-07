@@ -1,5 +1,6 @@
 export type User = {
   id: string;
+  name: string;
   email: string;
   role: "ADMIN" | "MANAGER";
 };
@@ -7,6 +8,14 @@ export type User = {
 export type WorkspaceSettings = {
   workspaceName: string;
   timezone: string;
+};
+
+export type ApiKeyRecord = {
+  key: string;
+  name: string;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export class ApiRequestError extends Error {

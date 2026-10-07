@@ -80,7 +80,7 @@ export function AppRouter() {
         setRegistrationOpen(false);
         setUser(newUser);
       }} />} />
-      <Route path="/home" element={user ? <HomePage user={user} onLogout={() => setUser(null)} /> : <Navigate replace to="/auth/login" />} />
+      <Route path="/home" element={user ? <HomePage user={user} onLogout={() => setUser(null)} onUserChange={setUser} /> : <Navigate replace to="/auth/login" />} />
       <Route path="/mailer" element={user ? <MailerLayout /> : <Navigate replace to="/auth/login" />}>
         <Route index element={<MailerOverviewPage />} />
         <Route path="campaigns" element={<MailerCampaignsPage />} />

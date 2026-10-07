@@ -42,10 +42,19 @@ function Sidebar({ user, onLogout }: { user: User; onLogout: () => void }) {
       </div>
       <Separator className="my-4 bg-[#eeeaf1]" />
       <div className="flex items-center gap-2.5 px-1">
-        <div className="grid size-9 shrink-0 place-items-center bg-[#e8dced] text-xs font-semibold uppercase text-[#513d5c]">{user.email[0]}</div>
+        <div className="grid size-9 shrink-0 place-items-center bg-[#e8dced] text-xs font-semibold uppercase text-[#513d5c]">{(user.name.trim() || user.email)[0]}</div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-medium">{user.email}</p>
-          <p className="mt-0.5 text-[10px] text-[#968d9a]">{user.role.toLowerCase()}</p>
+          {user.name.trim() && user.name.trim().toLowerCase() !== "user" ? (
+            <>
+              <p className="truncate text-xs font-medium">{user.name}</p>
+              <p className="mt-0.5 text-[10px] text-[#968d9a]">{user.email}</p>
+            </>
+          ) : (
+            <>
+              <p className="truncate text-xs font-medium">{user.email}</p>
+              <p className="mt-0.5 text-[10px] text-[#968d9a]">{user.role.toLowerCase()}</p>
+            </>
+          )}
         </div>
         <button aria-label="Sign out" className="p-2 text-[#908794] hover:bg-white hover:text-[#3e3543]" onClick={onLogout}><FiLogOut className="size-4" /></button>
       </div>
