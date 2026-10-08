@@ -10,7 +10,9 @@ RUN bun install --frozen-lockfile
 
 # Copy source and build (Prisma clients + Tailwind CSS + React client bundle)
 COPY . .
-RUN bun run prisma:generate
+# prisma.config.ts resolves DATABASE_URL when loaded, but generate makes no DB
+# connection — a placeholder is enough (real value is provided at runtime)
+RUN DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" bun run prisma:generate
 RUN bun run build
 
 # Remove dev dependencies for a smaller runtime image
