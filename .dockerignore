@@ -1,0 +1,19 @@
+# dependencies & generated artifacts (rebuilt inside the image)
+node_modules
+*/generated
+public/assets
+
+# git & CI
+.git
+.github
+
+# environment files
+.env
+.env.*.local
+
+# misc
+.DS_Store
+.cursor
+*.log
+*.md
+!README.md

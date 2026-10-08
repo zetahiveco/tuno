@@ -100,6 +100,28 @@ A self-hostable, multi-app workspace built with **Bun**, **React**, and **Postgr
 | `bun run prisma:generate` | Regenerate all Prisma clients                                            |
 | `bun run typecheck`    | Run TypeScript checks (`tsc --noEmit`)                                      |
 
+## Docker
+
+A public Docker image is published to GHCR on every push to `master` via [GitHub Actions](.github/workflows/docker-publish.yml), tagged with `latest`, semver (`v1.2.3` → `1.2.3`, `1.2`), and the commit SHA.
+
+```sh
+docker pull ghcr.io/zetahiveco/tuno:latest
+```
+
+Run it against a Postgres instance:
+
+```sh
+docker run -d \
+  --name tuno \
+  -p 5000:5000 \
+  -e DATABASE_URL=postgresql://postgres:root@host.docker.internal:5432/tuno \
+  -e APP_URL=http://localhost:5000 \
+  --add-host=host.docker.internal:host-gateway \
+  ghcr.io/zetahiveco/tuno:latest
+```
+
+On startup the container runs `bun scripts/database.ts push` (idempotent), so it creates the database and all Postgres schemas on first boot if the user has permission. See [Environment Variables](#environment-variables) for the full list (`DATABASE_URL`, `SMTP_*`, `AWS_S3_*`, …) and set the ones you need. Then visit `/auth/signup` to create your admin account.
+
 ## Architecture
 
 ```
@@ -205,4 +227,5 @@ Contributions are welcome! Please:
 
 ## License
 
+Tuno is open source under the [MIT License](LICENSE).
 Tuno is open source under the [MIT License](LICENSE).
